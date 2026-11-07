@@ -7,6 +7,7 @@
 #include "gfx.h"
 #include "world.h"
 #include "net.h"
+#include "lanserver.h"
 
 // entrada vinda do VrApi (espaço de rastreamento)
 struct Input {
@@ -91,6 +92,8 @@ public:
     bool recording() const;
     void saveProfile();
     void onPause();
+    void onResume();
+    void onDestroy();
     Scene scene() const;
     std::function<void(const std::string &)> scanFile;
     std::function<void()> askPermissions;
@@ -99,6 +102,28 @@ private:
     Gfx *gfx = nullptr;
     World world;
     Net net;
+    // ---- servidores locais (no próprio Go, sem nuvem)
+    enum NetMode { NM_OFF = 0, NM_CLOUD, NM_LAN };
+    int netMode = NM_OFF;
+    LanServer lan;            // servidor rodando NESTE óculos
+    LanDiscovery disc;        // lista de servidores na rede Wi-Fi
+    RoomCfg createCfg;        // ajustes para criar servidor
+    RoomCfg curCfg;           // ajustes do servidor atual (recebidos em INFO)
+    int nameIdx = 0, lanBtn0 = 0;
+    std::string codeEntry;    // teclado numérico
+    std::string curIp;        // IP do servidor atual
+    std::vector<std::pair<int, std::string>> succ;  // ordem de sucessão (id, ip)
+    bool wasOnline = false;
+    int migState = 0, migCand = 0, migTries = 0; double migT = 0; std::string migIp; int migId = -1;
+    bool codeSearch = false; double codeSearchT = 0;
+    std::string myIp;
+    void hostLan();
+    void joinLan(const std::string &ip, const std::string &code);
+    void leaveServer(bool quiet = false);
+    void beginMigration(int candId, const std::string &candIp);
+    void updateLan(float dt);
+    const RoomCfg &cfgNow() const { return netMode == NM_LAN ? curCfg : createCfg; }
+    float diffMul() const { static const float m[] = {0.8f, 1.0f, 1.25f}; return m[cfgNow().diff % 3]; }
     Profile prof;
     std::string saveDir, videoDir, videoDir2;
     double now = 0;

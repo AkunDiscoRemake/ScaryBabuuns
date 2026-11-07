@@ -15,11 +15,12 @@ enum NetState { NET_OFF = 0, NET_CONNECTING, NET_ONLINE, NET_FAILED };
 
 class Net {
 public:
-    void connect(const std::string &host, int port, const std::string &room, const std::string &name);
+    void connect(const std::string &host, int port, const std::string &room, const std::string &name, const std::string &code = "-", int wantId = -1);
     void disconnect();
     void send(const std::string &line);
     void poll(std::vector<std::string> &out);
     NetState state() const { return st.load(); }
+    std::string host; int port = 0;
     std::string error;
     int myId = -1, hostId = -1;
     ~Net() { disconnect(); }

@@ -11,7 +11,7 @@
 #include <android/log.h>
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "BabuunHollow", __VA_ARGS__)
 
-void Net::connect(const std::string &host, int port, const std::string &room, const std::string &name) {
+void Net::connect(const std::string &h, int p, const std::string &room, const std::string &name, const std::string &code, int wantId) {
     disconnect();
     quit = false;
     st = NET_CONNECTING;
@@ -19,8 +19,9 @@ void Net::connect(const std::string &host, int port, const std::string &room, co
     error.clear();
     std::string n = name;
     for (auto &c : n) if (c == ' ' || c == '\n') c = '_';
-    std::string hello = "HELLO " + std::to_string(NET_PROTO) + " " + room + " " + n + "\n";
-    th = std::thread(&Net::run, this, host, port, hello);
+    host = h; port = p;
+    std::string hello = "HELLO " + std::to_string(NET_PROTO) + " " + room + " " + n + " " + (code.empty() ? std::string("-") : code) + " " + std::to_string(wantId) + "\n";
+    th = std::thread(&Net::run, this, h, p, hello);
 }
 
 void Net::disconnect() {

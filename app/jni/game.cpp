@@ -101,14 +101,20 @@ bool Game::init(Gfx *g, const std::string &sd, const std::string &vd, const std:
     buildLobby();
     teleport(world.spawnLobby, PI);
     toLobby();
-    if (prof.online) net.connect(SERVER_HOST, SERVER_PORT, ROOMS[prof.room % NROOMS], prof.name);
+    disc.start();
+    myIp = localIp();
+    createCfg.name = "Toca_do_" + prof.name;
     hud("Bem-vindo ao Babuun Hollow, " + prof.name + "!", V3(1, 0.9f, 0.4f), 5);
     hud("Mire o controle para baixo e empurre o chão para andar.", V3(1, 1, 1), 6);
     if (askPermissions) askPermissions();
     return true;
 }
 
-void Game::onPause() { saveProfile(); if (gRecorder.active()) { gRecorder.stop(); gAudio.stopMic(); gAudio.recordSink = nullptr; } }
+void Game::onPause() {
+    saveProfile();
+    if (net.state() == NET_ONLINE && isHost()) net.send("AWAY");  // tirou o óculos: outro simula os monstros
+    if (gRecorder.active()) { gRecorder.stop(); gAudio.stopMic(); gAudio.recordSink = nullptr; }
+}
 
 // ------------------------------------------------------------------ utilidades
 void Game::hud(const std::string &t, V3 col, float time) {
@@ -437,7 +443,7 @@ void Game::applyRound(unsigned seed, unsigned mask, int gate, int phase) {
         std::vector<int> idx;
         for (size_t i = 0; i < world.bananas.size(); i++) idx.push_back((int)i);
         for (size_t i = idx.size(); i > 1; i--) std::swap(idx[i - 1], idx[r.next() % i]);
-        roundBananas.assign(idx.begin(), idx.begin() + std::min<size_t>(8, idx.size()));
+        roundBananas.assign(idx.begin(), idx.begin() + std::min<size_t>(clampf((float)cfgNow().bananas, 1, 24), idx.size()));
     }
     unsigned newBits = mask & ~collected;
     if (newBits && pstate == PS_GAME) {
@@ -535,6 +541,7 @@ void Game::netUpdate(float dt) {
     std::vector<std::string> lines;
     net.poll(lines);
     for (auto &l : lines) handleLine(l);
+    updateLan(dt);
     if (net.state() != NET_ONLINE) { remotes.clear(); return; }
     sendT -= dt;
     if (sendT <= 0) {
@@ -580,8 +587,29 @@ void Game::netUpdate(float dt) {
 void Game::handleLine(const std::string &line) {
     std::istringstream in(line);
     std::string cmd; in >> cmd;
-    if (cmd == "WELCOME") { in >> net.myId >> net.hostId; hud("Conectado! Sala " + std::string(ROOMS[prof.room % NROOMS]), V3(0.5f, 1, 0.6f)); }
-    else if (cmd == "HOST") { in >> net.hostId; }
+    if (cmd == "WELCOME") {
+        in >> net.myId >> net.hostId;
+        if (netMode == NM_CLOUD) hud("Conectado na nuvem!", V3(0.5f, 1, 0.6f));
+    } else if (cmd == "INFO") {
+        // INFO <público> <max> <dif> <bananas> <código|-> <nome>
+        int pub, mx, df, bn; std::string code, name;
+        in >> pub >> mx >> df >> bn >> code >> name;
+        curCfg.isPublic = pub != 0; curCfg.maxPlayers = mx; curCfg.diff = df; curCfg.bananas = bn;
+        curCfg.code = code == "-" ? "" : code; curCfg.name = name;
+        if (migState == 0) hud("Conectado em '" + name + "'", V3(0.5f, 1, 0.6f), 3);
+    } else if (cmd == "SUCC") {
+        succ.clear();
+        int id; std::string ip;
+        while (in >> id >> ip) succ.push_back({id, ip});
+    } else if (cmd == "MIGRATE") {
+        // o dono do servidor está saindo: o indicado vira o novo host
+        int id; std::string ip; in >> id >> ip;
+        if (netMode == NM_LAN && !lan.running() && id > 0) {
+            migCand = 0;
+            for (size_t i = 0; i < succ.size(); i++) if (succ[i].first == id) migCand = (int)i;
+            beginMigration(id, ip);
+        }
+    } else if (cmd == "HOST") { in >> net.hostId; }
     else if (cmd == "JOIN") { int id; std::string n; in >> id >> n; Remote *r = remote(id, true); r->name = n; hud(n + " entrou", V3(0.7f, 0.9f, 1), 2.5f); }
     else if (cmd == "LEAVE") {
         int id; in >> id;
@@ -637,7 +665,9 @@ void Game::handleLine(const std::string &line) {
         }
     } else if (cmd == "ERR") {
         std::string rest; std::getline(in, rest);
-        hud("Servidor: " + rest, V3(1, 0.5f, 0.4f), 4);
+        hud("Servidor:" + rest, V3(1, 0.5f, 0.4f), 4);
+        gAudio.play("ui_error");
+        if (netMode == NM_LAN && migState == 0) leaveServer(true);
     }
 }
 

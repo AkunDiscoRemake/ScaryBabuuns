@@ -58,6 +58,7 @@ ok:
 }
 
 void Game::moveMonster(Monster &m, const V3 &goal, float speed, float dt) {
+    speed *= diffMul();  // dificuldade do servidor
     // segue o caminho; recalcula de tempos em tempos
     m.pathT -= dt;
     if (m.path.empty() || m.pathT <= 0) { findPath(m.pos, goal, m.path); m.pathT = 0.6f; }

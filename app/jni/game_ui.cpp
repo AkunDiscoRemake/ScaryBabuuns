@@ -74,24 +74,56 @@ void Game::buildLobby() {
         }, V3(1, 0.8f, 0.2f), 0.045f);
     }
 
-    // ---- REDE
+    // ---- SERVIDORES (no próprio Go, sem nuvem)
     const StationPt &ns = world.st[3];
-    add(ns, -0.7f, 0.25f, "<", [this]() { prof.room = (prof.room + NROOMS - 1) % NROOMS; saveProfile(); });
-    add(ns, 0.7f, 0.25f, ">", [this]() { prof.room = (prof.room + 1) % NROOMS; saveProfile(); });
-    add(ns, -0.4f, -0.05f, "CONECTAR", [this]() {
-        prof.online = true; saveProfile();
+    static const char *SNAMES[] = {"Deposito_Assombrado", "Galera_do_Go", "So_Amigos", "Caca_aos_Babuuns", "Bananal", "Noite_do_Terror"};
+    auto setName = [this]() {
+        createCfg.name = nameIdx == 0 ? "Toca_do_" + prof.name : SNAMES[(nameIdx - 1) % 6];
+    };
+    add(ns, -1.6f, 0.62f, "<", [this, setName]() { nameIdx = (nameIdx + 6) % 7; setName(); });
+    add(ns, -0.55f, 0.62f, ">", [this, setName]() { nameIdx = (nameIdx + 1) % 7; setName(); });
+    add(ns, -1.4f, 0.4f, "PÚBLICO", [this]() { createCfg.isPublic = true; }, V3(0.4f, 1, 0.5f), 0.06f);
+    add(ns, -0.8f, 0.4f, "PRIVADO", [this]() { createCfg.isPublic = false; }, V3(1, 0.5f, 0.3f), 0.06f);
+    add(ns, -1.6f, 0.18f, "<", [this]() { createCfg.maxPlayers = std::max(2, createCfg.maxPlayers - 1); });
+    add(ns, -0.55f, 0.18f, ">", [this]() { createCfg.maxPlayers = std::min(10, createCfg.maxPlayers + 1); });
+    add(ns, -1.6f, -0.04f, "<", [this]() { createCfg.diff = (createCfg.diff + 2) % 3; });
+    add(ns, -0.55f, -0.04f, ">", [this]() { createCfg.diff = (createCfg.diff + 1) % 3; });
+    add(ns, -1.6f, -0.26f, "<", [this]() { createCfg.bananas = createCfg.bananas <= 4 ? 12 : createCfg.bananas - 4; });
+    add(ns, -0.55f, -0.26f, ">", [this]() { createCfg.bananas = createCfg.bananas >= 12 ? 4 : createCfg.bananas + 4; });
+    add(ns, -1.1f, -0.52f, "CRIAR / FECHAR", [this]() {
+        if (lan.running()) leaveServer();
+        else { createCfg.code = codeEntry; hostLan(); }
+    }, V3(0.3f, 1, 0.4f), 0.07f);
+    // teclado numérico do código (opcional)
+    for (int k = 1; k <= 9; k++) {
+        add(ns, -0.25f + ((k - 1) % 3) * 0.25f, 0.38f - ((k - 1) / 3) * 0.22f, std::to_string(k), [this, k]() { if (codeEntry.size() < 6) codeEntry += char('0' + k); }, V3(0.8f, 0.8f, 0.9f), 0.055f);
+    }
+    add(ns, 0.0f, -0.28f, "0", [this]() { if (codeEntry.size() < 6) codeEntry += '0'; }, V3(0.8f, 0.8f, 0.9f), 0.055f);
+    add(ns, -0.25f, -0.28f, "<-", [this]() { if (!codeEntry.empty()) codeEntry.pop_back(); }, V3(1, 0.6f, 0.4f), 0.055f);
+    add(ns, 0.25f, -0.28f, "X", [this]() { codeEntry.clear(); }, V3(1, 0.4f, 0.4f), 0.055f);
+    add(ns, 0.0f, -0.52f, "ENTRAR COM CÓDIGO", [this]() {
+        if (codeEntry.empty()) { gAudio.play("ui_error"); hud("Digite o código no teclado", V3(1, 0.6f, 0.4f), 2.5f); return; }
+        disc.queryCode(codeEntry); codeSearch = true; codeSearchT = now + 3;
+        hud("Procurando servidor com código " + codeEntry + "...", V3(0.7f, 0.9f, 1), 2.5f);
+    }, V3(1, 0.85f, 0.3f), 0.07f);
+    // lista de servidores encontrados na rede Wi-Fi
+    lanBtn0 = (int)buttons.size();
+    for (int i = 0; i < 5; i++) {
+        add(ns, 1.55f, 0.4f - i * 0.2f, "", [this, i]() {
+            if (i >= (int)disc.list.size()) return;
+            const LanEntry &e = disc.list[i];
+            if (e.locked && codeEntry.empty()) { gAudio.play("ui_error"); hud("Esse servidor tem código: digite no teclado", V3(1, 0.6f, 0.4f), 3); return; }
+            if (e.players >= e.maxPlayers) { gAudio.play("ui_error"); hud("Servidor cheio", V3(1, 0.6f, 0.4f), 2); return; }
+            joinLan(e.ip, e.locked ? codeEntry : "");
+        }, V3(0.4f, 1, 0.5f), 0.055f);
+    }
+    add(ns, -0.6f, -0.88f, "SAIR DO SERVIDOR", [this]() { leaveServer(); }, V3(1, 0.4f, 0.3f), 0.06f);
+    add(ns, 0.6f, -0.88f, "NUVEM (ALTARE)", [this]() {
+        leaveServer(true);
+        netMode = NM_CLOUD;
         net.connect(SERVER_HOST, SERVER_PORT, ROOMS[prof.room % NROOMS], prof.name);
         hud("Conectando a " SERVER_HOST "...", V3(0.7f, 0.9f, 1), 3);
-    }, V3(0.3f, 1, 0.4f));
-    add(ns, 0.4f, -0.05f, "SAIR", [this]() { prof.online = false; saveProfile(); net.disconnect(); hud("Modo offline", V3(1, 0.7f, 0.4f), 2); }, V3(1, 0.4f, 0.3f));
-    add(ns, 0.0f, -0.35f, "NOVO NOME", [this]() {
-        Rng r((unsigned)(now * 1000));
-        static const char *a[] = {"Banana", "Macaco", "Bugio", "Mico", "Sagui", "Gorila", "Babu", "Chimpa", "Uakari", "Kong"};
-        static const char *b[] = {"Veloz", "Medroso", "Valente", "Pelado", "Doido", "Ninja", "Real", "SemPerna", "Turbo", "Fantasma"};
-        char buf[48]; snprintf(buf, sizeof buf, "%s%s%d", a[r.next() % 10], b[r.next() % 10], (int)(r.next() % 90 + 10));
-        prof.name = buf; saveProfile();
-        hud("Nome: " + prof.name + " (reconecte para atualizar)", V3(1, 1, 0.6f), 3);
-    }, V3(0.9f, 0.9f, 0.3f));
+    }, V3(0.6f, 0.7f, 1), 0.06f);
 
     // ---- AJUSTES
     const StationPt &ms = world.st[5];
@@ -112,6 +144,7 @@ void Game::buildLobby() {
 }
 
 void Game::updateButtons(const Input &in) {
+    for (int i = 0; i < 5; i++) if (lanBtn0 + i < (int)buttons.size()) buttons[lanBtn0 + i].visible = i < (int)disc.list.size();
     hoverBtn = -1;
     laserOn = false;
     float dt = in.dt;
@@ -121,6 +154,7 @@ void Game::updateButtons(const Input &in) {
     for (size_t i = 0; i < buttons.size(); i++) {
         Button &b = buttons[i];
         b.cool -= dt; b.flash -= dt;
+        if (!b.visible) continue;
         V3 oc = b.pos - a;
         float t = dot(oc, d);
         if (t < 0 || t > best) continue;
@@ -139,7 +173,7 @@ void Game::updateButtons(const Input &in) {
     static float prevD[256][2];
     for (size_t i = 0; i < buttons.size() && i < 256; i++) {
         for (int h = 0; h < 2; h++) {
-            float dd = len(handVis[h] - buttons[i].pos);
+            float dd = buttons[i].visible ? len(handVis[h] - buttons[i].pos) : 99.f;
             if (dd < buttons[i].r + 0.05f && prevD[i][h] >= buttons[i].r + 0.05f) press(buttons[i]);
             prevD[i][h] = dd;
         }
@@ -234,17 +268,42 @@ void Game::drawBoards() {
         gfx->text(m * mTrans(V3(x, y - 0.03f, 0.04f)), b, 0.055f, c);
         gfx->text(m * mTrans(V3(x, y - 0.09f, 0.04f)), BADGES[i].desc, 0.03f, GREY);
     }
-    // rede
-    m = board(world.st[3], 2.0f, 1.35f, "MULTIPLAYER");
-    const char *st = net.state() == NET_ONLINE ? "ONLINE" : (net.state() == NET_CONNECTING ? "CONECTANDO..." : (net.state() == NET_FAILED ? "FALHOU" : "OFFLINE"));
-    snprintf(b, sizeof b, "Sala: %s", ROOMS[prof.room % NROOMS]); gfx->text(m * mTrans(V3(0, 0.22f, 0.04f)), b, 0.07f, WHITE, 1);
-    snprintf(b, sizeof b, "%s  %s:%d", st, SERVER_HOST, SERVER_PORT); gfx->text(m * mTrans(V3(0, 0.4f, 0.04f)), b, 0.04f, net.state() == NET_ONLINE ? YELLOW : GREY, 1);
-    if (net.state() == NET_FAILED) gfx->text(m * mTrans(V3(0, 0.08f, 0.04f)), net.error.c_str(), 0.035f, GREY, 1);
-    snprintf(b, sizeof b, "Você: %s", prof.name.c_str()); gfx->text(m * mTrans(V3(0, -0.22f, 0.04f)), b, 0.05f, WHITE, 1);
-    std::string list = "Na sala: ";
-    for (auto &r : remotes) list += r.name + "  ";
-    if (remotes.empty()) list += "(ninguém)";
-    gfx->text(m * mTrans(V3(-0.9f, -0.5f, 0.04f)), list.c_str(), 0.035f, GREY, 0, 1.8f);
+    // servidores
+    m = board(world.st[3], 3.5f, 2.05f, "SERVIDORES NO SEU GO (SEM NUVEM)");
+    {
+        auto T = [&](float x, float y, const std::string &t, float sz, const float *c, int al = 1) { gfx->text(m * mTrans(V3(x, y, 0.04f)), t.c_str(), sz, c, al); };
+        auto pretty = [](std::string s) { for (auto &c : s) if (c == '_') c = ' '; return s; };
+        static const char *DIFF[] = {"Fácil", "Normal", "Pesadelo"};
+        T(-1.08f, 0.74f, "CRIAR", 0.05f, YELLOW);
+        T(-1.08f, 0.6f, pretty(createCfg.name), 0.04f, WHITE);
+        T(-1.08f, 0.27f, createCfg.isPublic ? "Público (aparece na lista)" : "Privado (só com código)", 0.035f, GREY);
+        T(-1.08f, 0.16f, "Jogadores: " + std::to_string(createCfg.maxPlayers), 0.045f, WHITE);
+        T(-1.08f, -0.06f, std::string("Monstros: ") + DIFF[createCfg.diff % 3], 0.045f, WHITE);
+        T(-1.08f, -0.28f, "Bananas: " + std::to_string(createCfg.bananas), 0.045f, WHITE);
+        T(0.0f, 0.74f, "CÓDIGO (opcional)", 0.05f, YELLOW);
+        T(0.0f, 0.55f, codeEntry.empty() ? "- - - -" : codeEntry, 0.07f, WHITE);
+        T(1.1f, 0.74f, "NA REDE WI-FI", 0.05f, YELLOW);
+        for (int i = 0; i < 5; i++) {
+            if (i >= (int)disc.list.size()) { if (i == 0) T(1.05f, 0.38f, "procurando...", 0.04f, GREY); continue; }
+            const LanEntry &e = disc.list[i];
+            char b2[160];
+            snprintf(b2, sizeof b2, "%s%s", e.locked ? "[COD] " : "", pretty(e.name).c_str());
+            T(0.55f, 0.42f - i * 0.2f, b2, 0.04f, WHITE, 0);
+            snprintf(b2, sizeof b2, "%d/%d  %s  %d bananas  %s", e.players, e.maxPlayers, DIFF[e.diff % 3], e.bananas, e.ip.c_str());
+            T(0.55f, 0.36f - i * 0.2f, b2, 0.026f, GREY, 0);
+        }
+        // status
+        std::string st;
+        if (migState) st = "TROCANDO DE HOST...";
+        else if (lan.running()) st = "HOSPEDANDO '" + pretty(curCfg.name) + "' no seu Go - IP " + myIp + " - " + std::to_string(lan.players()) + "/" + std::to_string(curCfg.maxPlayers) + (curCfg.code.empty() ? "" : " - código " + curCfg.code);
+        else if (netMode == NM_LAN) st = net.state() == NET_ONLINE ? "CONECTADO em '" + pretty(curCfg.name) + "' (" + curIp + ") - " + std::to_string(remotes.size() + 1) + " jogadores" : (net.state() == NET_CONNECTING ? "CONECTANDO..." : "FALHOU: " + net.error);
+        else if (netMode == NM_CLOUD) st = net.state() == NET_ONLINE ? "ONLINE na nuvem " SERVER_HOST : (net.state() == NET_CONNECTING ? "CONECTANDO NA NUVEM..." : "NUVEM: " + net.error);
+        else st = "OFFLINE - seu IP: " + myIp + " - você: " + prof.name;
+        T(0.0f, -0.7f, st, 0.04f, (lan.running() || net.state() == NET_ONLINE) ? YELLOW : GREY);
+        std::string who = "Jogadores: " + prof.name;
+        for (auto &r : remotes) who += ", " + r.name;
+        if (netMode != NM_OFF) T(0.0f, -0.78f, who, 0.03f, GREY);
+    }
     // como jogar
     m = board(world.st[4], 2.6f, 1.75f, "COMO JOGAR / CORRER");
     gfx->text(m * mTrans(V3(-1.2f, 0.55f, 0.04f)),
@@ -281,8 +340,10 @@ void Game::drawBoards() {
         float s = bt.r / 0.05f;
         gfx->draw(mButton, mTRS(bt.pos + bt.nrm * push, q, V3(s, s, 1)), c);
         if (!bt.label.empty()) {
-            M4 tm = mTRS(bt.pos + bt.nrm * 0.03f + V3(0, -bt.r - 0.06f, 0), qLook(-bt.nrm, V3(0, 1, 0)));
-            gfx->text(tm, bt.label.c_str(), 0.045f, WHITE, 1);
+            bool on = bt.label.size() <= 2;
+            M4 tm = mTRS(bt.pos + bt.nrm * (on ? 0.04f : 0.03f) + V3(0, on ? -0.02f : -bt.r - 0.05f, 0), qLook(-bt.nrm, V3(0, 1, 0)));
+            static const float DARK[4] = {0.05f, 0.05f, 0.05f, 1};
+            gfx->text(tm, bt.label.c_str(), on ? 0.05f : 0.035f, on ? DARK : WHITE, 1);
         }
     }
     // texto do portal

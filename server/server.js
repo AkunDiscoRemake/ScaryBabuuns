@@ -78,6 +78,12 @@ function handle(c, line) {
   if (!c.room) return;
   const room = rooms.get(c.room);
   if (!room) return;
+  if (cmd === 'AWAY' && room.host === c.id) {
+    // quem simulava os monstros tirou o óculos: passa para outro jogador
+    const other = [...room.clients].find(o => o !== c);
+    if (other) { room.host = other.id; broadcast(room, `HOST ${room.host}`); }
+    return;
+  }
   if (cmd === 'ST' || cmd === 'EV') broadcast(room, `${cmd} ${c.id} ${rest}`, c);
 }
 

@@ -99,6 +99,24 @@ static void scanFile(const std::string &path) {
     if (env->ExceptionCheck()) env->ExceptionClear();
 }
 
+// trava de multicast/broadcast do Wi-Fi: sem ela o Go pode descartar os anúncios de servidores
+static void wifiMulticastLock() {
+    JNIEnv *env = jenv();
+    jclass act = env->GetObjectClass(A.java.ActivityObject);
+    jmethodID gss = env->GetMethodID(act, "getSystemService", "(Ljava/lang/String;)Ljava/lang/Object;");
+    jobject wm = gss ? env->CallObjectMethod(A.java.ActivityObject, gss, env->NewStringUTF("wifi")) : nullptr;
+    if (env->ExceptionCheck() || !wm) { env->ExceptionClear(); return; }
+    jclass wmc = env->GetObjectClass(wm);
+    jmethodID cml = env->GetMethodID(wmc, "createMulticastLock", "(Ljava/lang/String;)Landroid/net/wifi/WifiManager$MulticastLock;");
+    jobject lock = cml ? env->CallObjectMethod(wm, cml, env->NewStringUTF("babuunhollow")) : nullptr;
+    if (env->ExceptionCheck() || !lock) { env->ExceptionClear(); return; }
+    jclass lc = env->GetObjectClass(lock);
+    jmethodID acq = env->GetMethodID(lc, "acquire", "()V");
+    if (acq) env->CallVoidMethod(lock, acq);
+    if (env->ExceptionCheck()) env->ExceptionClear();
+    else { env->NewGlobalRef(lock); LOGI("multicast lock ok"); }
+}
+
 // ------------------------------------------------------------------ EGL
 static bool initEgl() {
     A.dpy = eglGetDisplay(EGL_DEFAULT_DISPLAY);
@@ -391,6 +409,7 @@ void android_main(android_app *app) {
     std::string vid2 = std::string("/sdcard/Android/data/com.babuun.hollow/files/Movies");
     A.game.scanFile = scanFile;
     A.game.askPermissions = requestPermissions;
+    wifiMulticastLock();
     A.game.init(&A.gfx, save, vid1, vid2);
     A.ready = true;
 
@@ -408,6 +427,7 @@ void android_main(android_app *app) {
         if (A.ovr) frame();
     }
     A.game.onPause();
+    A.game.onDestroy();  // se for host: passa o servidor para o próximo jogador
     gRecorder.stop();
     gAudio.shutdown();
     if (A.ovr) vrapi_LeaveVrMode(A.ovr);

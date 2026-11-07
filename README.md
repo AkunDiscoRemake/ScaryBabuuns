@@ -62,17 +62,42 @@ Os vídeos gravados ficam em `/sdcard/Movies/BabuunHollow/` (ou em
 - **14 badges**: Primeiro Passo, Banana!, Colecionador, Fuga!, Sobrevivente, Mordido, Não Pisque,
   Mamãe Brava, Macaco Social, Estilista, Cinegrafista, Alpinista, Velocista, Veterano.
 
-## Multiplayer: servidor `us-lax01.altare.global:25570`
-O jogo conecta por **TCP** em `us-lax01.altare.global:25570`. O servidor está em `server/server.js`
-(Node.js ≥ 14, sem dependências):
+## Multiplayer
+
+### Servidores no próprio Oculus Go (sem nuvem)
+Qualquer Go pode virar servidor. No lobby, vá até o quadro **SERVIDORES NO SEU GO**:
+
+| Coluna | O que faz |
+|---|---|
+| **CRIAR** | Nome do servidor (◄ ►), **PÚBLICO** ou **PRIVADO**, máximo de jogadores (2 a 10), monstros (Fácil / Normal / Pesadelo), bananas (4 / 8 / 12) e **CRIAR / FECHAR** |
+| **CÓDIGO** | Teclado numérico para digitar um código (opcional, até 6 dígitos) |
+| **NA REDE WI-FI** | Lista dos servidores públicos achados na rede, com jogadores, regras e IP. Toque em ENTRAR. |
+
+- **Público**: aparece na lista de todo mundo no mesmo Wi-Fi. Se tiver código, aparece com `[COD]` e só
+  entra quem digitar o código.
+- **Privado**: **não aparece** na lista. Os amigos digitam o código e apertam **ENTRAR COM CÓDIGO**
+  (se você não escolher um código, o jogo gera um de 4 dígitos).
+- O dono do servidor também joga normalmente. O servidor roda numa thread dentro do jogo
+  (TCP 25570), os anúncios usam UDP 25571 e a busca por código usa UDP 25572.
+- **Troca de host automática**: todo mundo recebe a fila de sucessão (ordem de entrada).
+  - Se o host **fecha o jogo**, ele avisa e o próximo da fila vira o servidor na hora.
+  - Se o host **cai sem avisar** (desligou, saiu do Wi-Fi), os outros percebem a queda e o próximo da fila
+    sobe o servidor sozinho.
+  - Os outros reconectam nele mantendo o mesmo ID, o mesmo código e as mesmas regras. Se o candidato não
+    responder, tenta o seguinte da fila.
+  - Se o host só **tira o óculos**, a simulação dos monstros passa para outro jogador enquanto ele volta.
+- Funciona entre Gos no **mesmo Wi-Fi**. Alguns roteadores com "isolamento de clientes / AP isolation"
+  bloqueiam isso: desative essa opção ou use o roteador de casa (não use rede de convidados).
+
+### Servidor na nuvem (opcional): `us-lax01.altare.global:25570`
+O botão **NUVEM (ALTARE)** conecta por TCP no servidor `server/server.js` (Node.js ≥ 14, sem dependências):
 ```bash
 node server/server.js            # porta 25570
 PORT=25570 MAX_PER_ROOM=10 node server/server.js
 ```
 - No painel da Altare, crie um servidor **Node.js** com arquivo de inicialização `server/server.js` na porta 25570.
-- Abrir `http://us-lax01.altare.global:25570` no navegador mostra o status (salas e jogadores).
-- O primeiro jogador da sala vira **host**: ele simula os monstros e a rodada. Se sair, outro assume.
-- Para mudar o servidor, edite `SERVER_HOST`/`SERVER_PORT` em `app/jni/net.h` e recompile.
+- Abrir `http://us-lax01.altare.global:25570` no navegador mostra o status.
+- Para mudar o endereço, edite `SERVER_HOST`/`SERVER_PORT` em `app/jni/net.h`.
 
 ## Compilar
 Requisitos: Android NDK r21e, build-tools 30 (aapt/zipalign/apksigner), `android.jar` (API 26), Java, Node, Blender 4.2.
@@ -90,6 +115,7 @@ Testes no PC (sem óculos):
 ```bash
 g++ -std=c++14 -o build/world_test tools/test/world_test.cpp app/jni/world.cpp && ./build/world_test
 # loco_test: simula a gorilla locomotion (os dois modos) e a IA dos três monstros
+# lan_test: 4 jogos ao mesmo tempo -> criar servidor, lista, código, servidor cheio, troca de host e queda
 ```
 `python3 tools/preview_bm.py saida.png app/assets/models/babuun.bm` renderiza qualquer modelo `.bm`.
 
@@ -101,6 +127,8 @@ app/jni/        motor C++ (VrApi, GLES3, OpenSL ES, MediaCodec)
   gfx.cpp         shaders (névoa, luzes fluorescentes, AO por vértice, vento), modelos .bm, texto
   audio.cpp       mixer 3D + microfone   recorder.cpp  vídeo H.264 + AAC -> MP4
   net.cpp         cliente TCP            world.cpp     colisão/raycast
+  lanserver.cpp   servidor dentro do Go + anúncio/descoberta UDP
+  game_lan.cpp    criar/entrar/sair de servidor e troca automática de host
 app/assets/     modelos .bm, texturas .tex, sons .wav, mapa
 tools/          gerador de mapa, texturas, sons, fonte, script do Blender, testes
 server/         servidor multiplayer (Node)

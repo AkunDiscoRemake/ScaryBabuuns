@@ -13,7 +13,7 @@ void Audio::setPos(int, const V3 &) {} void Audio::setGain(int, float) {} void A
 bool Audio::startMic() { return false; } void Audio::stopMic() {} void Audio::mixCallback(short *, int) {} void Audio::micCallback(const short *, int) {}
 bool Recorder::start(const std::string &) { return false; } void Recorder::stop() {} void Recorder::pushVideo(const unsigned char *, double) {}
 void Recorder::pushAudio(const short *, int) {} float Recorder::elapsed() const { return 0; }
-void Net::connect(const std::string &, int, const std::string &, const std::string &) {} void Net::disconnect() {}
+void Net::connect(const std::string &, int, const std::string &, const std::string &, const std::string &, int) {} void Net::disconnect() {}
 void Net::send(const std::string &) {} void Net::poll(std::vector<std::string> &) {}
 bool Gfx::init() { return true; } Texture *Gfx::tex(const std::string &) { static Texture t; return &t; }
 Model *Gfx::model(const std::string &) { static Model m; return &m; } void Gfx::begin(const DrawCtx &, const Scene &) {}
