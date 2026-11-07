@@ -91,6 +91,7 @@ public:
     void onCameraFrame(const unsigned char *rgba, double t);  // chamado quando há pixels lidos
     bool recording() const;
     void saveProfile();
+    void showError(const std::string &e) { hud(e, V3(1, 0.4f, 0.3f), 15); }
     void onPause();
     void onResume();
     void onDestroy();

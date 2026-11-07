@@ -9,6 +9,8 @@
 #include <unistd.h>
 #include <time.h>
 #include <sys/prctl.h>
+#include <signal.h>
+#include <fcntl.h>
 #include "VrApi.h"
 #include "VrApi_Helpers.h"
 #include "VrApi_Input.h"
@@ -22,6 +24,31 @@
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "BabuunHollow", __VA_ARGS__)
 
 static AAssetManager *gAssets = nullptr;
+
+// ------------------------------------------------------------------ diagnóstico de falhas
+// Guarda a etapa atual; se o jogo quebrar, grava em crash.txt e mostra na próxima abertura.
+static volatile const char *gStage = "inicio";
+static char gCrashPath[256] = "/sdcard/Android/data/com.babuun.hollow/files/crash.txt";
+#define STAGE(s) do { gStage = s; LOGI("etapa: %s", s); } while (0)
+static void crashHandler(int sig, siginfo_t *info, void *) {
+    int fd = open(gCrashPath, O_CREAT | O_WRONLY | O_TRUNC, 0666);
+    if (fd >= 0) {
+        char b[256];
+        int n = snprintf(b, sizeof b, "sinal %d endereco %p etapa %s\n", sig, info ? info->si_addr : nullptr, (const char *)gStage);
+        write(fd, b, n);
+        close(fd);
+    }
+    __android_log_print(ANDROID_LOG_FATAL, "BabuunHollow", "FALHA sinal %d na etapa %s", sig, (const char *)gStage);
+    signal(sig, SIG_DFL);
+    raise(sig);
+}
+static void installCrashHandler(const char *dataDir) {
+    if (dataDir) snprintf(gCrashPath, sizeof gCrashPath, "%s/crash.txt", dataDir);
+    struct sigaction sa = {};
+    sa.sa_sigaction = crashHandler;
+    sa.sa_flags = SA_SIGINFO;
+    for (int s : {SIGSEGV, SIGABRT, SIGBUS, SIGILL, SIGFPE}) sigaction(s, &sa, nullptr);
+}
 
 bool readAsset(const char *path, std::vector<unsigned char> &out) {
     if (!gAssets) return false;
@@ -334,8 +361,11 @@ static void frame() {
     if (!in.hasCtrl) {  // sem controle: usa a cabeça como "mão"
         in.ctrl = in.head;
     }
+    gStage = "update";
     A.game.update(in);
+    gStage = "camera";
     renderCamera(t);
+    gStage = "render";
 
     M4 rig = A.game.rigMatrix();
     M4 rigInv = mInvRigid(rig);
@@ -397,20 +427,35 @@ void android_main(android_app *app) {
     A.java.Vm->AttachCurrentThread(&A.java.Env, nullptr);
     A.java.ActivityObject = app->activity->clazz;
     prctl(PR_SET_NAME, (long)"BabuunMain", 0, 0, 0);
+    installCrashHandler(app->activity->internalDataPath);
+    std::string lastCrash;
+    {
+        FILE *cf = fopen(gCrashPath, "r");
+        if (cf) { char b[256] = {0}; fgets(b, sizeof b, cf); fclose(cf); lastCrash = b; remove(gCrashPath); }
+    }
+    STAGE("vrapi_Initialize");
 
     ovrInitParms ip = vrapi_DefaultInitParms(&A.java);
     if (vrapi_Initialize(&ip) != VRAPI_INITIALIZE_SUCCESS) { LOGE("vrapi_Initialize falhou"); exit(0); }
-    initEgl();
+    STAGE("EGL");
+    if (!initEgl()) { LOGE("EGL falhou"); vrapi_Shutdown(); exit(0); }
+    STAGE("swapchains");
     createEyes();
+    STAGE("shaders");
     A.gfx.init();
+    STAGE("audio");
     gAudio.init();
     std::string save = app->activity->internalDataPath ? app->activity->internalDataPath : "/sdcard";
     std::string vid1 = "/sdcard/Movies/BabuunHollow";
     std::string vid2 = std::string("/sdcard/Android/data/com.babuun.hollow/files/Movies");
     A.game.scanFile = scanFile;
     A.game.askPermissions = requestPermissions;
+    STAGE("wifi");
     wifiMulticastLock();
+    STAGE("carregando jogo");
     A.game.init(&A.gfx, save, vid1, vid2);
+    if (!lastCrash.empty()) A.game.showError("Falha anterior: " + lastCrash);
+    STAGE("loop");
     A.ready = true;
 
     app->onAppCmd = onCmd;
@@ -424,7 +469,7 @@ void android_main(android_app *app) {
             if (A.ovr) break;
         }
         if (A.destroyed) break;
-        if (A.ovr) frame();
+        if (A.ovr) { STAGE("quadro"); frame(); }
     }
     A.game.onPause();
     A.game.onDestroy();  // se for host: passa o servidor para o próximo jogador

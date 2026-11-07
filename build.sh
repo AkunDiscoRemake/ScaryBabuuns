@@ -28,9 +28,14 @@ for f in "$ROOT"/app/jni/*.cpp; do
 done
 wait
 echo "== linkando"
-$CXX -shared -o "$OUT/apk/lib/armeabi-v7a/libbabuunhollow.so" $OBJS \
-  -L"$VR/lib" -lvrapi -landroid -llog -lEGL -lGLESv3 -lOpenSLES -lmediandk \
-  -Wl,--gc-sections -Wl,-u,ANativeActivity_onCreate -static-libstdc++ -s
+SR="$NDK/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/arm-linux-androideabi"
+# libc++ + libc++abi + libunwind estáticos, NESTA ordem: o Go (Android 7.1) não exporta o _Unwind_*
+$CXX -shared -nostdlib++ -o "$OUT/apk/lib/armeabi-v7a/libbabuunhollow.so" $OBJS \
+  "$SR/libc++_static.a" "$SR/libc++abi.a" "$SR/libunwind.a" \
+  -L"$VR/lib" -lvrapi -landroid -llog -lEGL -lGLESv3 -lOpenSLES -lmediandk -latomic \
+  -Wl,--gc-sections -Wl,-u,ANativeActivity_onCreate -Wl,--exclude-libs,ALL -s
+UNRES="$("$TC/llvm-readelf" --dyn-syms -W "$OUT/apk/lib/armeabi-v7a/libbabuunhollow.so" | grep " UND " | grep -v "@LIBC" | grep -E "_Unwind|__gnu_unwind|__cxa_|_ZNSt" || true)"
+if [ -n "$UNRES" ]; then echo "ERRO: símbolos não resolvidos:"; echo "$UNRES"; exit 1; fi
 cp "$VR/lib/libvrapi.so" "$OUT/apk/lib/armeabi-v7a/"
 
 echo "== empacotando"

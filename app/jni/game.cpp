@@ -106,7 +106,6 @@ bool Game::init(Gfx *g, const std::string &sd, const std::string &vd, const std:
     createCfg.name = "Toca_do_" + prof.name;
     hud("Bem-vindo ao Babuun Hollow, " + prof.name + "!", V3(1, 0.9f, 0.4f), 5);
     hud("Mire o controle para baixo e empurre o chão para andar.", V3(1, 1, 1), 6);
-    if (askPermissions) askPermissions();
     return true;
 }
 
@@ -402,6 +401,8 @@ void Game::updateCamera(const Input &in, float dt) {
     // gatilho: grava/para (se não estiver mirando em um botão)
     if (in.triggerDown && camState != 0 && hoverBtn < 0) {
         if (!gRecorder.active()) {
+            static bool asked = false;
+            if (!asked && askPermissions) { asked = true; askPermissions(); }
             bool ok = gRecorder.start(videoDir) || gRecorder.start(videoDir2);
             if (ok) {
                 gAudio.startMic();
