@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Babuun Hollow</title>
+<style>
+  :root { --bg: #0d0d10; --fg: #f2efe6; --mute: #9a968c; --acc: #ffd84a; --btn: #2b2a24; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font-family: system-ui, sans-serif; overflow: hidden; }
+  #view canvas { display: block; }
+  #ui { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(8, 8, 10, 0.88); padding: 16px; box-sizing: border-box; }
+  .card { max-width: 560px; width: 100%; text-align: center; }
+  h1 { font-size: 44px; margin: 0 0 6px; letter-spacing: 1px; color: var(--acc); }
+  p { color: var(--mute); line-height: 1.45; margin: 6px 0; }
+  button { font-size: 20px; padding: 14px 22px; margin: 8px; border-radius: 10px; border: 2px solid var(--acc); background: var(--btn); color: var(--fg); cursor: pointer; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  #enter { font-size: 26px; background: #4a3a10; }
+  #status { color: var(--acc); min-height: 1.4em; }
+  small { color: var(--mute); display: block; margin-top: 14px; }
+</style>
+</head>
+<body>
+<div id="view"></div>
+<div id="ui"><div class="card">
+  <h1>BABUUN HOLLOW</h1>
+  <p>Você é um macaco sem pernas preso num depósito abandonado. Pegue as bananas douradas e fuja dos babuínos.</p>
+  <p id="status">Carregando...</p>
+  <button id="enter" disabled>ENTRAR NO VR</button><br>
+  <button id="mic">Ativar microfone (gravar com voz)</button>
+  <button id="desk" disabled>Jogar na tela</button>
+  <small>Oculus Go: use o navegador do Oculus. Na tela: mouse para cima/baixo mexe o braço, botão direito arrastando olha, clique = gatilho, A/D gira, C/V câmera, Q grito, roda = esticar câmera.</small>
+</div></div>
+<script src="bundle.js"></script>
+</body>
+</html>

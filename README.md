@@ -1,140 +1,89 @@
-# Babuun Hollow 🐒 (VR para Oculus Go)
+# Babuun Hollow 🐒 (WebXR para Oculus Go)
 
-Jogo de terror em VR, **APK nativo (VrApi / `libvrapi.so`)** para o **Oculus Go**, instalável por sideload.
+Jogo de terror em VR que roda **no navegador do Oculus Go** (WebXR), sem instalar nada.
 Você é um **macaco sem pernas** e anda só com as mãos (gorilla locomotion acelerada e mais forte).
 Fique preso num depósito subterrâneo abandonado (concreto, ladrilhos, luzes fluorescentes, corredores
 de prateleiras cheias de brinquedos), pegue as bananas douradas e fuja antes que os babuínos te peguem.
 
-> Jogo original inspirado no gênero "macaco sem pernas + terror". Todos os modelos foram modelados via
-> **Blender CLI**, todas as texturas são procedurais e todos os sons foram sintetizados do zero.
+> Jogo original inspirado no gênero "macaco sem pernas + terror". Todos os modelos foram feitos via
+> **Blender CLI**, as texturas são procedurais e os sons foram sintetizados do zero.
 
 ![preview](docs/preview.png)
 
-## Instalar no Oculus Go (sideload)
+## Como jogar no Oculus Go
+1. Publique a pasta `web/` num endereço **https** (WebXR exige https):
+   - **GitHub Pages**: no repositório, *Settings → Pages → Source: GitHub Actions*. O workflow
+     `.github/workflows/pages.yml` publica sozinho a cada push.
+   - **ou Netlify Drop** (grátis, 1 minuto): abra https://app.netlify.com/drop e arraste a pasta `web/`
+     (ou o `BabuunHollow-web.zip` descompactado).
+2. No Go, abra o **navegador do Oculus**, entre no endereço e aperte **ENTRAR NO VR**.
+3. (Opcional) Antes, toque em **Ativar microfone** para os vídeos da câmera gravarem sua voz.
 
-1. Ative o **Modo Desenvolvedor** do Go (app Oculus no celular → Dispositivos → Modo do desenvolvedor).
-2. Conecte o Go no PC e instale com **SideQuest** (arraste o APK) ou via adb:
-   ```bash
-   adb install -r dist/BabuunHollow.apk
-   # opcional: já libera microfone e armazenamento (para gravar vídeos com voz)
-   adb shell pm grant com.babuun.hollow android.permission.RECORD_AUDIO
-   adb shell pm grant com.babuun.hollow android.permission.WRITE_EXTERNAL_STORAGE
-   ```
-3. No Go: **Biblioteca → Fontes desconhecidas → Babuun Hollow**.
-
-Os vídeos gravados ficam em `/sdcard/Movies/BabuunHollow/` (ou em
-`/sdcard/Android/data/com.babuun.hollow/files/Movies/` se a permissão de armazenamento for negada).
+No PC dá para testar no modo tela: botão **Jogar na tela** (mouse para cima/baixo = braço, botão direito
+arrastando = olhar, clique = gatilho, A/D = girar, C/V = câmera, Q = grito, roda = esticar a câmera).
 
 ## Controles (um controle só)
-
 | Ação | Como |
 |---|---|
 | Andar / correr | Aponte o controle para baixo até a mão tocar o chão e **empurre para trás**. Solte no meio do movimento para ganhar impulso. |
-| Mão duplicada | A outra mão é controlada automaticamente (veja os modos abaixo) |
-| Girar | Clique no touchpad **esquerda/direita** (30° ou 45°) |
-| Grito de macaco | Clique no **centro** do touchpad (cuidado: monstros escutam!) |
-| Pegar / guardar câmera | Botão **VOLTAR** (ou o botão "PEGAR CÂMERA" no lobby) |
-| Gravar / parar | **Gatilho** (com a câmera na mão ou parada no ar) |
-| Esticar o bastão | **Deslize** o dedo para cima/baixo no touchpad (0,12 m a 2,6 m) |
-| Selfie ↔ mundo | Clique em **cima** no touchpad |
-| Deixar câmera parada no ar | Clique em **baixo** no touchpad (VOLTAR pega de novo) |
+| Girar | Touchpad **esquerda/direita** |
+| Grito de macaco | **Centro** do touchpad (monstros escutam!) |
+| Câmera | Touchpad **cima**: pega a câmera / alterna selfie-mundo. **Baixo**: deixa parada no ar (segurar 0,8 s guarda). **Deslizar**: estica o bastão (0,12 a 2,6 m). **Gatilho**: grava/para. |
 | Botões do lobby | Toque com qualquer mão **ou** aponte o laser e aperte o gatilho |
 
+Os vídeos (WebM, com sua voz + som do jogo) vão para a pasta **Downloads**.
+
 ### Mão duplicada (Go só tem 1 controle)
-- **ESPELHO** (padrão): a mão duplicada copia a do controle espelhada. As duas empurram juntas, e por isso
-  dá para **andar reto**. Quando a mão sobe, as duas se aproximam do centro (vão se juntando).
-- **ALTERNADA**: enquanto a mão do controle empurra o chão, a duplicada vai para a **direção oposta**
-  (para a frente e para cima). Quando a mão levanta, as duas se juntam de novo.
-- Ajustes no lobby: **impulso** (Normal / Forte / Turbo), **ângulo do braço**, giro, volume.
+- **ESPELHO** (padrão): a mão duplicada copia a do controle, espelhada. As duas empurram juntas e você
+  **anda reto**. Quando a mão sobe, as duas se aproximam do centro.
+- **ALTERNADA**: enquanto a mão do controle empurra, a duplicada vai para o lado **oposto** (frente/cima).
+  Quando ela levanta, as duas se juntam.
+- Ajustes no lobby: impulso (Normal / Forte / Turbo), ângulo do braço, giro, volume, novo nome.
 
 ## O jogo
-- **Lobby (sala de controle)**:
-  - **estação de cores** com botões R/G/B de 0 a 9 dentro do VR, 8 cores prontas e uma opção aleatória;
-  - **guarda-roupa** com manequim (chapéus, óculos, gravata e cor do acessório);
-  - **quadro de badges** (toque numa badge para usá-la como título acima do nome);
-  - **multiplayer** (sala, conectar, novo nome), **ajustes**, **como jogar** e **suporte da câmera**.
-- **O Depósito**: corredores de concreto, salas de máquinas, escritórios e corredores de prateleiras que
-  dá para escalar. Pegue **8 bananas douradas** para abrir a **porta de aço** e fuja.
-- **Monstros (com jumpscare cada um)**:
-  - **Babuun**: patrulha, ouve barulho, persegue rápido e **salta** em quem está em cima das prateleiras.
-  - **Pálido**: alto e esquelético; **só se move quando ninguém está olhando para ele**. Acorda com 2 bananas.
-  - **Mamãe**: enorme; ouve qualquer barulho de longe, dá investidas e depois cansa. Acorda com 5 bananas.
-- **14 badges**: Primeiro Passo, Banana!, Colecionador, Fuga!, Sobrevivente, Mordido, Não Pisque,
-  Mamãe Brava, Macaco Social, Estilista, Cinegrafista, Alpinista, Velocista, Veterano.
+- **Lobby**:
+  - estação de cores com botões R/G/B (0–9) dentro do VR, 8 cores prontas e uma opção aleatória;
+  - guarda-roupa com manequim (chapéus, óculos, gravata e cor do acessório);
+  - quadro de **14 badges** (toque numa badge para usá-la como título);
+  - salas, ajustes, como jogar e suporte da câmera.
+- **O Depósito**: pegue as bananas para abrir a porta de aço e fuja.
+- **Monstros (com jumpscare)**:
+  - **Babuun**: persegue, ouve barulho e salta nas prateleiras;
+  - **Pálido**: só anda quando ninguém olha para ele;
+  - **Mamãe**: ouve tudo de longe e dá investidas.
 
-## Multiplayer
-
-### Servidores no próprio Oculus Go (sem nuvem)
-Qualquer Go pode virar servidor. No lobby, vá até o quadro **SERVIDORES NO SEU GO**:
-
-| Coluna | O que faz |
-|---|---|
-| **CRIAR** | Nome do servidor (◄ ►), **PÚBLICO** ou **PRIVADO**, máximo de jogadores (2 a 10), monstros (Fácil / Normal / Pesadelo), bananas (4 / 8 / 12) e **CRIAR / FECHAR** |
-| **CÓDIGO** | Teclado numérico para digitar um código (opcional, até 6 dígitos) |
-| **NA REDE WI-FI** | Lista dos servidores públicos achados na rede, com jogadores, regras e IP. Toque em ENTRAR. |
-
-- **Público**: aparece na lista de todo mundo no mesmo Wi-Fi. Se tiver código, aparece com `[COD]` e só
-  entra quem digitar o código.
-- **Privado**: **não aparece** na lista. Os amigos digitam o código e apertam **ENTRAR COM CÓDIGO**
-  (se você não escolher um código, o jogo gera um de 4 dígitos).
-- O dono do servidor também joga normalmente. O servidor roda numa thread dentro do jogo
-  (TCP 25570), os anúncios usam UDP 25571 e a busca por código usa UDP 25572.
-- **Troca de host automática**: todo mundo recebe a fila de sucessão (ordem de entrada).
-  - Se o host **fecha o jogo**, ele avisa e o próximo da fila vira o servidor na hora.
-  - Se o host **cai sem avisar** (desligou, saiu do Wi-Fi), os outros percebem a queda e o próximo da fila
-    sobe o servidor sozinho.
-  - Os outros reconectam nele mantendo o mesmo ID, o mesmo código e as mesmas regras. Se o candidato não
-    responder, tenta o seguinte da fila.
-  - Se o host só **tira o óculos**, a simulação dos monstros passa para outro jogador enquanto ele volta.
-- Funciona entre Gos no **mesmo Wi-Fi**. Alguns roteadores com "isolamento de clientes / AP isolation"
-  bloqueiam isso: desative essa opção ou use o roteador de casa (não use rede de convidados).
-
-### Servidor na nuvem (opcional): `us-lax01.altare.global:25570`
-O botão **NUVEM (ALTARE)** conecta por TCP no servidor `server/server.js` (Node.js ≥ 14, sem dependências):
-```bash
-node server/server.js            # porta 25570
-PORT=25570 MAX_PER_ROOM=10 node server/server.js
-```
-- No painel da Altare, crie um servidor **Node.js** com arquivo de inicialização `server/server.js` na porta 25570.
-- Abrir `http://us-lax01.altare.global:25570` no navegador mostra o status.
-- Para mudar o endereço, edite `SERVER_HOST`/`SERVER_PORT` em `app/jni/net.h`.
+## Multiplayer: o seu Go é o servidor
+No quadro **SALAS** do lobby:
+- **Criar**: nome, **pública** ou **privada**, máximo de jogadores (2 a 10), monstros (Fácil / Normal / Pesadelo),
+  bananas (4 / 8 / 12) e **código opcional** (teclado numérico).
+- **Pública**: aparece na lista de salas de todo mundo (com `[COD]` se tiver código).
+  **Privada**: não aparece; entra digitando o código e apertando **ENTRAR COM CÓDIGO**.
+- O óculos que cria a sala **é o servidor**: a partida roda direto entre os óculos (WebRTC, ponto a ponto).
+  O serviço público e gratuito do PeerJS é usado só para **apresentar** os jogadores uns aos outros.
+- **Troca de host automática**: todos sabem a fila de sucessão.
+  - Se o host fecha o jogo, ele avisa e o próximo da fila vira o servidor na hora.
+  - Se o host **cai sem avisar**, os outros percebem em ~4 s e o próximo assume.
+  - A sala continua com o mesmo nome, código e regras.
 
 ## Compilar
-Requisitos: Android NDK r21e, build-tools 30 (aapt/zipalign/apksigner), `android.jar` (API 26), Java, Node, Blender 4.2.
 ```bash
-node tools/genmap.mjs                         # mapa (shared/map.json + app/assets/map.txt)
+npm install
+node tools/genmap.mjs                         # mapa
 python3 tools/gen_textures.py                 # texturas procedurais
 python3 tools/gen_sounds.py                   # sons sintetizados
-python3 tools/gen_font.py                     # fonte do texto em VR
-blender -b -P tools/blender/build_assets.py   # TODOS os modelos 3D (personagens, monstros, mapa...)
-./build.sh                                    # -> dist/BabuunHollow.apk
+blender -b -P tools/blender/build_assets.py   # TODOS os modelos 3D
+node tools/build_web.mjs                      # -> web/ (pronto para publicar)
+node tools/build_web.mjs --serve              # servidor local em http://localhost:8080
 ```
-O `build.sh` baixa automaticamente o VrApi 1.14 (headers + `libvrapi.so` 32-bit para o Go) em `third_party/`.
-
-Testes no PC (sem óculos):
-```bash
-g++ -std=c++14 -o build/world_test tools/test/world_test.cpp app/jni/world.cpp && ./build/world_test
-# loco_test: simula a gorilla locomotion (os dois modos) e a IA dos três monstros
-# lan_test: 4 jogos ao mesmo tempo -> criar servidor, lista, código, servidor cheio, troca de host e queda
-```
-`python3 tools/preview_bm.py saida.png app/assets/models/babuun.bm` renderiza qualquer modelo `.bm`.
+`python3 tools/preview_bm.py saida.png app/assets/models/babuun.bm` renderiza qualquer modelo.
 
 ## Estrutura
 ```
-app/jni/        motor C++ (VrApi, GLES3, OpenSL ES, MediaCodec)
-  main.cpp        ciclo de vida, VrApi, controle do Go, câmera FBO/PBO, JNI
-  game*.cpp       jogador, locomoção, rodada, monstros (BFS), lobby, HUD, jumpscare
-  gfx.cpp         shaders (névoa, luzes fluorescentes, AO por vértice, vento), modelos .bm, texto
-  audio.cpp       mixer 3D + microfone   recorder.cpp  vídeo H.264 + AAC -> MP4
-  net.cpp         cliente TCP            world.cpp     colisão/raycast
-  lanserver.cpp   servidor dentro do Go + anúncio/descoberta UDP
-  game_lan.cpp    criar/entrar/sair de servidor e troca automática de host
-app/assets/     modelos .bm, texturas .tex, sons .wav, mapa
-tools/          gerador de mapa, texturas, sons, fonte, script do Blender, testes
-server/         servidor multiplayer (Node)
-dist/           APK pronto para sideload
+src/        código do jogo (three.js + WebXR)
+  main.js     WebXR, controle do Go, modo tela    game.js   jogador, locomoção, rodada, monstros, rede
+  lobby.js    estações e botões do lobby          camera.js câmera segurável + gravação
+  net.js      salas P2P com troca de host         world.js  colisão, raycast, caminhos (BFS)
+app/assets/ modelos .bm, texturas, sons, mapa (fontes geradas pelas ferramentas)
+tools/      gerador de mapa, texturas, sons, script do Blender, build web
+web/        versão pronta para publicar (https)
 ```
-
-## Licenças
-`libvrapi.so` faz parte do Oculus Mobile SDK e é redistribuída dentro do APK conforme a
-*Oculus SDK License* (veja `dist/licencas/`).
