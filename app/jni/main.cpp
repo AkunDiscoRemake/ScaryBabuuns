@@ -246,7 +246,7 @@ static void handleVrMode() {
         vrapi_LeaveVrMode(A.ovr);
         A.ovr = nullptr;
         eglMakeCurrent(A.dpy, A.tiny, A.tiny, A.ctx);
-        A.game.onPause();
+        if (A.ready) A.game.onPause();
     }
 }
 
@@ -311,6 +311,26 @@ static Input readInput(double displayTime) {
 }
 
 // ------------------------------------------------------------------ quadro
+static void submitLoadingFrame() {
+    A.frameIndex++;
+    double disp = vrapi_GetPredictedDisplayTime(A.ovr, A.frameIndex);
+    ovrTracking2 tr = vrapi_GetPredictedTracking2(A.ovr, disp);
+    ovrLayerProjection2 black = vrapi_DefaultLayerBlackProjection2();
+    black.HeadPose = tr.HeadPose;
+    black.Header.Flags |= VRAPI_FRAME_LAYER_FLAG_INHIBIT_SRGB_FRAMEBUFFER;
+    ovrLayerLoadingIcon2 icon = vrapi_DefaultLayerLoadingIcon2();
+    icon.Header.Flags |= VRAPI_FRAME_LAYER_FLAG_INHIBIT_SRGB_FRAMEBUFFER;
+    const ovrLayerHeader2 *layers[] = {&black.Header, &icon.Header};
+    ovrSubmitFrameDescription2 fd = {};
+    fd.Flags |= VRAPI_FRAME_FLAG_FLUSH;
+    fd.SwapInterval = 1;
+    fd.FrameIndex = A.frameIndex;
+    fd.DisplayTime = disp;
+    fd.LayerCount = 2;
+    fd.Layers = layers;
+    vrapi_SubmitFrame2(A.ovr, &fd);
+}
+
 static void renderCamera(double t) {
     // renderiza a visão da câmera segurável (~30 fps)
     if (!A.game.camWantsFrame() || t - A.lastCamFrame < 1.0 / REC_FPS) return;
@@ -433,48 +453,63 @@ void android_main(android_app *app) {
         FILE *cf = fopen(gCrashPath, "r");
         if (cf) { char b[256] = {0}; fgets(b, sizeof b, cf); fclose(cf); lastCrash = b; remove(gCrashPath); }
     }
-    STAGE("vrapi_Initialize");
+    // Responde aos comandos do Android IMEDIATAMENTE (senão o sistema acusa "não está respondendo")
+    app->onAppCmd = onCmd;
+    app->onInputEvent = [](android_app *, AInputEvent *) -> int32_t { return 0; };
 
+    STAGE("vrapi_Initialize");
     ovrInitParms ip = vrapi_DefaultInitParms(&A.java);
     if (vrapi_Initialize(&ip) != VRAPI_INITIALIZE_SUCCESS) { LOGE("vrapi_Initialize falhou"); exit(0); }
     STAGE("EGL");
     if (!initEgl()) { LOGE("EGL falhou"); vrapi_Shutdown(); exit(0); }
-    STAGE("swapchains");
-    createEyes();
-    STAGE("shaders");
-    A.gfx.init();
-    STAGE("audio");
-    gAudio.init();
+
     std::string save = app->activity->internalDataPath ? app->activity->internalDataPath : "/sdcard";
     std::string vid1 = "/sdcard/Movies/BabuunHollow";
     std::string vid2 = std::string("/sdcard/Android/data/com.babuun.hollow/files/Movies");
     A.game.scanFile = scanFile;
     A.game.askPermissions = requestPermissions;
-    STAGE("wifi");
-    wifiMulticastLock();
-    STAGE("carregando jogo");
-    A.game.init(&A.gfx, save, vid1, vid2);
-    if (!lastCrash.empty()) A.game.showError("Falha anterior: " + lastCrash);
-    STAGE("loop");
-    A.ready = true;
+    int loadStep = 0;
 
-    app->onAppCmd = onCmd;
     while (!A.destroyed) {
         int events;
         android_poll_source *src;
-        while (ALooper_pollAll(A.ovr ? 0 : -1, nullptr, &events, (void **)&src) >= 0) {
+        // sem VR ainda: espera eventos com timeout curto para nunca travar
+        while (ALooper_pollAll(A.ovr ? 0 : 100, nullptr, &events, (void **)&src) >= 0) {
             if (src) src->process(app, src);
             if (app->destroyRequested) { A.destroyed = true; break; }
             handleVrMode();
             if (A.ovr) break;
         }
         if (A.destroyed) break;
-        if (A.ovr) { STAGE("quadro"); frame(); }
+        if (!A.ovr) continue;
+        if (!A.ready) {
+            // tela de carregamento do próprio VrApi (ícone girando) enquanto carrega em etapas
+            submitLoadingFrame();
+            switch (loadStep++) {
+                case 0: STAGE("swapchains"); createEyes(); break;
+                case 1: STAGE("shaders"); A.gfx.init(); break;
+                case 2: STAGE("audio"); gAudio.init(); break;
+                case 3: STAGE("wifi"); wifiMulticastLock(); break;
+                case 4:
+                    STAGE("carregando jogo");
+                    A.game.init(&A.gfx, save, vid1, vid2);
+                    if (!lastCrash.empty()) A.game.showError("Falha anterior: " + lastCrash);
+                    A.ready = true;
+                    A.lastTime = 0;
+                    STAGE("loop");
+                    break;
+            }
+            continue;
+        }
+        gStage = "quadro";
+        frame();
     }
-    A.game.onPause();
-    A.game.onDestroy();  // se for host: passa o servidor para o próximo jogador
-    gRecorder.stop();
-    gAudio.shutdown();
+    if (A.ready) {
+        A.game.onPause();
+        A.game.onDestroy();  // se for host: passa o servidor para o próximo jogador
+        gRecorder.stop();
+        gAudio.shutdown();
+    }
     if (A.ovr) vrapi_LeaveVrMode(A.ovr);
     vrapi_Shutdown();
     A.java.Vm->DetachCurrentThread();
