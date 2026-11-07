@@ -165,8 +165,22 @@ box('lobbywall', LX, 4.25, LZ + LW / 2 + 2, 5, 0.5, 4, 0, 'concrete');
 box('lobbywall', LX, 2, LZ + LW / 2 + 4.25, 5, 4, 0.5, 0, 'concrete');
 for (const [dx, dz] of [[-5, -5], [5, -5], [-5, 5], [5, 5], [0, -2], [0, 3]]) lights.push([LX + dx, LH - 0.05, LZ + dz]);
 
+// ---------------- ZONAS SEGURAS (barreira azul: jogadores passam, monstros não) ----------------
+// retângulos na grade [linha0, coluna0, linha1, coluna1] + portas [linha, coluna, eixo da passagem]
+const SAFE = [
+  { name: 'Início', rect: [17, 9, 21, 15], doors: [[16, 13, 'z'], [19, 8, 'x'], [19, 16, 'x']] },
+  { name: 'Escritório', rect: [1, 9, 7, 16], doors: [[4, 8, 'x'], [4, 17, 'x'], [8, 14, 'z']] },
+];
+const inSafe = (x, z) => SAFE.some(sz => {
+  const c = Math.floor((x - OX) / CELL), r = Math.floor((z - OZ) / CELL);
+  const [r0, c0, r1, c1] = sz.rect;
+  return (r >= r0 && r <= r1 && c >= c0 && c <= c1) || sz.doors.some(d => d[0] === r && d[1] === c);
+});
+for (let i = bananaSpots.length - 1; i >= 0; i--) if (inSafe(bananaSpots[i][0], bananaSpots[i][2])) bananaSpots.splice(i, 1);
+
 const map = {
   version: 2,
+  safe: SAFE,
   plan: PLAN, cell: CELL, wallH: WALLH, origin: [OX, OZ],
   forest: { min: [OX, OZ], max: [OX + W, OZ + D], spawn },
   lobby: {
@@ -209,6 +223,10 @@ for (const p of patrol) P('PATROL', p);
 for (const l of lights) P('LIGHT', l);
 for (const [k, v] of Object.entries(map.monsterSpawns)) L.push(['MSPAWN', k, ...v.map(f)].join(' '));
 L.push(['GRID', COLS, ROWS, CELL, f(OX), f(OZ)].join(' '));
+for (const sz of SAFE) {
+  L.push(['SAFE', ...sz.rect, sz.name.replace(/ /g, '_')].join(' '));
+  for (const d of sz.doors) L.push(['SDOOR', ...d].join(' '));
+}
 for (const row of PLAN) L.push('ROW ' + row);
 writeFileSync(new URL('../app/assets/map.txt', import.meta.url), L.join('\n') + '\n');
 console.log('map:', colliders.length, 'colisores,', bananaSpots.length, 'bananas,', lights.length, 'luzes,', patrol.length, 'patrulha');

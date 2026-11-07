@@ -6,6 +6,7 @@ import { SM } from './world.js';
 import { Net } from './net.js';
 import { Lobby } from './lobby.js';
 import { CameraRig } from './camera.js';
+import { buildSafeZones } from './safezone.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -111,7 +112,8 @@ export class Game {
     this.body = world.spawnLobby.clone(); this.vel = V(); this.rigYaw = Math.PI; this.bodyYaw = Math.PI;
     this.headQ = new THREE.Quaternion(); this.headPos = V();
     this.shoulder = [V(), V()]; this.target = [V(), V()]; this.handVis = [V(), V()]; this.anchor = [V(), V()]; this.prevT = [V(), V()];
-    this.touching = [false, false]; this.hist = []; this.wasTouching = false; this.lift = 0; this.altBlend = 0; this.ctrlHand = 1;
+    this.touching = [false, false]; this.hist = []; this.wasTouching = false;
+    this.prevLoc = [V(), V()]; this.anchorN = [V(0, 1, 0), V(0, 1, 0)]; this.lift = 0; this.altBlend = 0; this.ctrlHand = 1;
     this.ctrlDir = V(0, 0, -1); this.aliveT = 0; this.speed = 0;
     this.msgs = [];
     // rodada
@@ -148,6 +150,7 @@ export class Game {
     for (let i = 0; i < 24; i++) { const b = model('banana'); b.scale.setScalar(1.3); b.visible = false; s.add(b); this.bananaModels.push(b); }
     this.monModels = ['babuun', 'palido', 'mamae'].map(n => { const m = model(n); m.visible = false; s.add(m); return m; });
     this.me = new Avatar(s, this.prof, false);
+    this.safeFx = buildSafeZones(s, this.world);
     // HUD preso à cabeça
     this.hudGroup = new THREE.Group();
     this.camera.add(this.hudGroup);
@@ -203,6 +206,12 @@ export class Game {
 
     if (this.pstate === 'lobby' && this.body.distanceTo(this.world.portal) < this.world.portalR + 0.3) this.enterGame();
     if (this.pstate === 'game') {
+      const sz = this.world.inSafe(this.body);
+      if (sz !== this.inSafeZone) {
+        if (sz) { this.hud(`ZONA SEGURA (${sz.name}): os monstros não entram aqui`, '#66ccff', 3.5); audio.play('badge', 0.25); }
+        else if (this.inSafeZone) this.hud('Você saiu da zona segura!', '#ff9966', 2);
+        this.inSafeZone = sz;
+      }
       this.aliveT += dt;
       if (this.aliveT > 300) this.award(4);
       if (this.body.y > 3.3) this.award(11);
@@ -267,45 +276,63 @@ export class Game {
     const shX = 0.2 * (1 - 0.7 * this.lift);
     const dirs = []; dirs[this.ctrlHand] = dM; dirs[1 - this.ctrlHand] = dO;
     const fromBody = qYaw(this.bodyYaw);
-    const delta = V(); let cnt = 0;
+    const delta = V(); let cnt = 0, firstContact = false;
     for (let i = 0; i < 2; i++) {
       const sx = i === 1 ? 1 : -1;
       const d = dirs[i].clone(); d.x -= sx * this.lift * 0.18; d.normalize();
       this.shoulder[i].copy(V(sx * shX, 0.14, 0).applyQuaternion(fromBody).add(this.body));
       const tgt = d.applyQuaternion(fromBody).multiplyScalar(ARM_LEN).add(this.shoulder[i]);
       const sd = tgt.clone().sub(this.shoulder[i]).normalize();
+      // movimento da mão no referencial do corpo (frente = +f, cima = +y) desde o quadro anterior
+      const loc = tgt.clone().sub(this.body).applyQuaternion(qYaw(-this.bodyYaw));
+      const mv = loc.clone().sub(this.prevLoc[i]);
+      this.prevLoc[i].copy(loc);
       if (this.touching[i]) {
         const h = this.world.raycast(this.shoulder[i], tgt.clone().addScaledVector(sd, 0.04));
-        if (!h.hit) this.touching[i] = false;
+        // PEGADA DE MÃO ÚNICA: só gruda enquanto empurra (para trás/baixo).
+        // Levar a mão para a frente ou para cima solta (senão o corpo é puxado para trás/cima).
+        const onFloor = this.anchorN[i].y > 0.5;
+        const forward = -mv.z, up = mv.y;
+        if (!h.hit || up > 0.004 || (onFloor && forward > 0.003)) this.touching[i] = false;
         else { delta.add(this.anchor[i].clone().sub(tgt)); cnt++; }
       } else {
         const h = this.world.raycast(this.shoulder[i], tgt);
-        if (h.hit) {
+        // só agarra se a mão estiver indo para trás/baixo (não ao trazer o braço de volta)
+        if (h.hit && !(h.n.y > 0.5 && -mv.z > 0.006) && mv.y < 0.006) {
           this.touching[i] = true;
           this.anchor[i].copy(h.p).addScaledVector(h.n, 0.01);
+          this.anchorN[i].copy(h.n);
+          firstContact = true;
           const spd = tgt.distanceTo(this.prevT[i]) / dt;
           if (spd > 0.35) {
             audio.play3D(['tap_ground', 'tap_wood', 'tap_stone', 'tap_metal', 'tap_leaf'][h.mat % 5], this.anchor[i], clamp(spd * 0.25, 0.2, 1), 3);
             if (spd > 2) this.makeNoise(this.anchor[i], 1);
           }
-          delta.add(this.anchor[i].clone().sub(tgt)); cnt++;
+          // correção da penetração inicial: pequena e fora do histórico de velocidade
+          const corr = this.anchor[i].clone().sub(tgt);
+          if (corr.length() > 0.05) corr.setLength(0.05);
+          delta.add(corr); cnt++;
         }
       }
       this.target[i].copy(tgt); this.prevT[i].copy(tgt);
     }
     if (cnt > 0) {
       delta.divideScalar(cnt);
-      if (delta.length() > 0.4) delta.setLength(0.4);
+      if (delta.length() > 0.12) delta.setLength(0.12);   // no máx. ~8,6 m/s por quadro
       const before = this.body.clone();
       this.body.add(delta);
       this.world.resolveSphere(this.body, BODY_R);
-      this.hist.push(this.body.clone().sub(before).divideScalar(dt));
-      if (this.hist.length > 6) this.hist.shift();
+      if (!firstContact) {
+        this.hist.push(this.body.clone().sub(before).divideScalar(dt));
+        if (this.hist.length > 6) this.hist.shift();
+      }
       this.vel.set(0, 0, 0);
     } else {
       if (this.wasTouching && this.hist.length) {
         const avg = V(); for (const h of this.hist) avg.add(h); avg.divideScalar(this.hist.length);
         this.vel.copy(avg).multiplyScalar(BOOST_MUL[P.boost]);
+        // pulo para cima mais contido (não sai voando para o teto)
+        this.vel.y = Math.min(this.vel.y * 0.7, 4.5);
         const s = this.vel.length();
         if (s > BOOST_MAX[P.boost]) this.vel.setLength(BOOST_MAX[P.boost]);
         if (s > 3.5) audio.play3D('whoosh', this.body, clamp(s / 12, 0.1, 0.6), 2);
@@ -424,7 +451,8 @@ export class Game {
       const rad = m.type === 2 ? 0.8 : 0.4;
       const probe = V(np.x, rad + 0.05, np.z);
       this.world.resolveSphere(probe, rad);
-      m.pos.set(probe.x, m.pos.y, probe.z);
+      if (!this.world.inSafe(probe, rad + 0.3)) m.pos.set(probe.x, m.pos.y, probe.z);
+      else m.pathT = 0;   // bateu na barreira azul: recalcula o caminho
       m.yaw += wrap(Math.atan2(-d.x, -d.z) - m.yaw) * Math.min(1, dt * 8);
     }
     m.speed = speed;
@@ -434,8 +462,8 @@ export class Game {
   }
   monsterAI(m, dt) {
     const ps = [];
-    if (this.pstate === 'game') ps.push({ id: this.myId, body: this.body, head: this.headPos, q: this.headQ });
-    for (const r of this.remotes.values()) if (r.state === 'F') ps.push({ id: r.id, body: r.body, head: r.body.clone().add(V(0, 0.3, 0)), q: r.headQ });
+    if (this.pstate === 'game' && !this.world.inSafe(this.body)) ps.push({ id: this.myId, body: this.body, head: this.headPos, q: this.headQ });
+    for (const r of this.remotes.values()) if (r.state === 'F' && !this.world.inSafe(r.body)) ps.push({ id: r.id, body: r.body, head: r.body.clone().add(V(0, 0.3, 0)), q: r.headQ });
     const sight = m.type === 2 ? 13 : 22;
     const eye = m.pos.clone().add(V(0, m.type === 1 ? 2.1 : m.type === 2 ? 1.9 : 1.0, 0));
     const fwd = V(-Math.sin(m.yaw), 0, -Math.cos(m.yaw));
@@ -612,7 +640,7 @@ export class Game {
       this.ambMode = mode;
     }
     let danger = 0;
-    if (this.pstate === 'game') for (const m of this.mons) {
+    if (this.pstate === 'game' && !this.inSafeZone) for (const m of this.mons) {
       if (!m.active) continue;
       const d = m.pos.distanceTo(this.body);
       const chasing = m.state === 2 || m.state === 4 || (m.type === 1 && m.state !== 5 && d < 15);
@@ -651,6 +679,7 @@ export class Game {
       const flick = !inLobby && i % 7 === 3 && Math.sin(this.now * 13 + i) * Math.sin(this.now * 30 + i) > 0.3 ? 0.15 : 1;
       pl.intensity = 1.6 * flick;
     });
+    this.safeFx.update(this.now);
     // portão
     this.gateModel.position.copy(this.world.gate).add(V(0, this.gateAnim * 3.9, 0));
     // bananas

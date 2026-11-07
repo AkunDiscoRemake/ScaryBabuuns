@@ -10,7 +10,7 @@ const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 export class World {
   constructor(text) {
     this.cols = []; this.bananas = []; this.patrol = []; this.lights = []; this.grid = [];
-    this.st = {}; this.mspawn = {};
+    this.st = {}; this.mspawn = {}; this.safe = [];
     for (const line of text.split('\n')) {
       const p = line.trim().split(/\s+/);
       const t = p[0];
@@ -38,6 +38,8 @@ export class World {
       else if (t === 'MSPAWN') this.mspawn[p[1]] = new Vector3(n(2), 0, n(3));
       else if (t === 'GRID') { this.gCols = +p[1]; this.gRows = +p[2]; this.gCell = n(3); this.gOx = n(4); this.gOz = n(5); }
       else if (t === 'ROW') this.grid.push(p[1]);
+      else if (t === 'SAFE') this.safe.push({ rect: [+p[1], +p[2], +p[3], +p[4]], name: (p[5] || '').replace(/_/g, ' '), doors: [] });
+      else if (t === 'SDOOR') this.safe[this.safe.length - 1].doors.push([+p[1], +p[2], p[3]]);
       else if (t && t.startsWith('ST_')) this.st[t.slice(3)] = { c: new Vector3(n(1), n(2), n(3)), yaw: n(4) };
     }
   }
@@ -153,7 +155,29 @@ export class World {
 
   los(a, b) { return !this.raycast(a, b).hit; }
 
-  walkable(c, r) { if (r < 0 || r >= this.gRows || c < 0 || c >= this.gCols) return false; const ch = this.grid[r][c]; return ch === '.' || ch === 'P'; }
+  // célula de zona segura (sala ou porta com barreira)
+  safeCell(c, r) {
+    for (const z of this.safe) {
+      const [r0, c0, r1, c1] = z.rect;
+      if (r >= r0 && r <= r1 && c >= c0 && c <= c1) return z;
+      for (const d of z.doors) if (d[0] === r && d[1] === c) return z;
+    }
+    return null;
+  }
+  // ponto dentro de zona segura? (margin > 0 aumenta a zona — usado para manter monstros longe da barreira)
+  inSafe(p, margin = 0) {
+    if (p.x < -150) return null;
+    for (const [dx, dz] of margin ? [[0, 0], [margin, 0], [-margin, 0], [0, margin], [0, -margin]] : [[0, 0]]) {
+      const z = this.safeCell(Math.floor((p.x + dx - this.gOx) / this.gCell), Math.floor((p.z + dz - this.gOz) / this.gCell));
+      if (z) return z;
+    }
+    return null;
+  }
+  walkable(c, r) {
+    if (r < 0 || r >= this.gRows || c < 0 || c >= this.gCols) return false;
+    const ch = this.grid[r][c];
+    return (ch === '.' || ch === 'P') && !this.safeCell(c, r);   // monstros nunca entram em zona segura
+  }
 
   // caminho BFS na grade da planta
   findPath(from, to) {
