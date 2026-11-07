@@ -2,19 +2,9 @@
   "name": "babuun-hollow",
   "version": "1.0.0",
   "private": true,
-  "description": "Jogo de terror VR (WebXR) para Oculus Go — macaco sem pernas, gorilla locomotion, babuínos monstruosos e multiplayer.",
+  "description": "Babuun Hollow — jogo de terror VR nativo (VrApi) para Oculus Go. Este package.json só serve para gerar o mapa e rodar o servidor.",
   "scripts": {
     "map": "node tools/genmap.mjs",
-    "models": "blender -b -P tools/blender/build_assets.py",
-    "build": "esbuild src/main.js --bundle --minify --target=es2017,chrome66 --outfile=public/bundle.js",
-    "dev": "esbuild src/main.js --bundle --sourcemap --target=es2017,chrome66 --outfile=public/bundle.js --servedir=public --serve=8080",
     "server": "node server/server.js"
-  },
-  "dependencies": {
-    "three": "0.160.1",
-    "webxr-polyfill": "2.0.3"
-  },
-  "devDependencies": {
-    "esbuild": "0.20.2"
   }
 }
