@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "peerjs": "1.5.4",
-    "three": "0.160.1"
+    "three": "0.160.1",
+    "webxr-polyfill": "^2.0.3"
   },
   "devDependencies": {
     "esbuild": "0.20.2"

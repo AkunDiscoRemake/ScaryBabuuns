@@ -25,11 +25,25 @@
   <h1>BABUUN HOLLOW</h1>
   <p>Você é um macaco sem pernas preso num depósito abandonado. Pegue as bananas douradas e fuja dos babuínos.</p>
   <p id="status">Carregando...</p>
-  <button id="enter" disabled>ENTRAR NO VR</button><br>
+  <button id="enter" disabled>CARREGANDO... aguarde</button><br>
   <button id="mic">Ativar microfone (gravar com voz)</button>
   <button id="desk" disabled>Jogar na tela</button>
+  <small id="diag"></small>
   <small>Oculus Go: use o navegador do Oculus. Na tela: mouse para cima/baixo mexe o braço, botão direito arrastando olha, clique = gatilho, A/D gira, C/V câmera, Q grito, roda = esticar câmera.</small>
 </div></div>
+<script>
+// Diagnóstico em ES5 (funciona até em navegador antigo): mostra qualquer erro na tela
+(function () {
+  var st = document.getElementById('status'), dg = document.getElementById('diag');
+  function show(m) { st.textContent = 'Erro: ' + m; st.style.color = '#ff7755'; }
+  window.onerror = function (msg, src, line) { show(msg + ' (linha ' + line + ')'); };
+  window.addEventListener('unhandledrejection', function (e) { show(e.reason && e.reason.message ? e.reason.message : String(e.reason)); });
+  dg.textContent = 'Navegador: ' + navigator.userAgent.replace(/^Mozilla\/5\.0 /, '') +
+    ' | WebXR: ' + (navigator.xr ? 'sim' : 'não') + ' | WebVR: ' + (navigator.getVRDisplays ? 'sim' : 'não') +
+    ' | WebGL2: ' + (!!document.createElement('canvas').getContext('webgl2') ? 'sim' : 'não');
+  setTimeout(function () { if (/Carregando/.test(st.textContent)) show('o carregamento travou em: ' + st.textContent); }, 45000);
+})();
+</script>
 <script src="bundle.js"></script>
 </body>
 </html>

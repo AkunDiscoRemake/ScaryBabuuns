@@ -5,6 +5,10 @@ import { audio } from './audio.js';
 import { World } from './world.js';
 import { Game } from './game.js';
 import { askMic } from './camera.js';
+import WebXRPolyfill from 'webxr-polyfill';
+
+// navegador só com WebVR (Oculus Go antigo): traduz para WebXR
+if (!navigator.xr) { try { new WebXRPolyfill({ cardboard: false }); } catch (e) { console.warn(e); } }
 
 const MODELS = ['map', 'gate', 'monkey', 'hand', 'arm', 'banana', 'babuun', 'palido', 'mamae', 'camera', 'stick', 'grip', 'button', 'board',
   'cos_cap', 'cos_beanie', 'cos_tophat', 'cos_crown', 'cos_leafcrown', 'cos_horns', 'cos_headphones', 'cos_glasses', 'cos_shades', 'cos_bowtie'];
@@ -42,6 +46,7 @@ async function start() {
   window.game = game;
   status('Pronto!');
   $('enter').disabled = false;
+  $('enter').textContent = navigator.xr ? 'ENTRAR NO VR' : 'ENTRAR NO VR (sem WebXR neste navegador)';
   $('desk').disabled = false;
 
   // ---- entrar no VR

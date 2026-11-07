@@ -17,7 +17,7 @@ if (!existsSync(`${OUT}/assets/tex/concrete.png`) || process.argv.includes('--te
 
 const opts = {
   entryPoints: ['src/main.js'], bundle: true, minify: true, sourcemap: false,
-  target: ['chrome70'], outfile: `${OUT}/bundle.js`, logLevel: 'info',
+  target: ['chrome66'], outfile: `${OUT}/bundle.js`, logLevel: 'info',
 };
 if (process.argv.includes('--serve')) {
   const ctx = await context(opts);
