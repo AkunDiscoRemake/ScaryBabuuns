@@ -25,7 +25,7 @@ arrastando = olhar, clique = gatilho, A/D = girar, C/V = câmera, Q = grito, rod
 ## Controles (um controle só)
 | Ação | Como |
 |---|---|
-| Andar / correr | Aponte o controle para baixo até a mão tocar o chão e **empurre para trás**. Solte no meio do movimento para ganhar impulso. |
+| Andar / correr | **Gorilla locomotion real**: a mão gruda onde encosta e o corpo anda ao contrário dela. Empurre o chão para trás **rápido e com força** para ganhar impulso; levante o braço para voltar. |
 | Girar | Touchpad **esquerda/direita** |
 | Grito de macaco | **Centro** do touchpad (monstros escutam!) |
 | Câmera | Touchpad **cima**: pega a câmera / alterna selfie-mundo. **Baixo**: deixa parada no ar (segurar 0,8 s guarda). **Deslizar**: estica o bastão (0,12 a 2,6 m). **Gatilho**: grava/para. |

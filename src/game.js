@@ -32,8 +32,9 @@ export const HATS = ['', 'cos_cap', 'cos_beanie', 'cos_tophat', 'cos_crown', 'co
 export const FACES = ['', 'cos_glasses', 'cos_shades'];
 export const NECKS = ['', 'cos_bowtie'];
 export const ACC = [[0.85, 0.15, 0.12], [0.15, 0.35, 0.9], [0.2, 0.7, 0.25], [0.95, 0.8, 0.1], [0.6, 0.2, 0.8], [0.95, 0.95, 0.95], [0.1, 0.1, 0.1], [1, 0.5, 0.1]];
-const GRAV = 9.8, BODY_R = 0.28, ARM_LEN = 0.85;
-const BOOST_MUL = [1.3, 1.6, 1.9], BOOST_MAX = [8.5, 10.5, 12.5];
+const GRAV = 9.8, BODY_R = 0.28, ARM_LEN = 0.85, HAND_R = 0.06;
+// gorilla locomotion: multiplicador do impulso e velocidade máxima (Normal / Forte / Turbo)
+const JUMP_MUL = [1.2, 1.35, 1.5], JUMP_MAX = [7.5, 9.5, 11.5], VEL_LIMIT = 0.4;
 const NAMES_A = ['Banana', 'Macaco', 'Bugio', 'Mico', 'Sagui', 'Gorila', 'Babu', 'Chimpa', 'Uakari', 'Kong'];
 const NAMES_B = ['Veloz', 'Medroso', 'Valente', 'Pelado', 'Doido', 'Ninja', 'Real', 'SemPerna', 'Turbo', 'Fantasma'];
 export const randomName = () => NAMES_A[Math.random() * 10 | 0] + NAMES_B[Math.random() * 10 | 0] + (10 + (Math.random() * 90 | 0));
@@ -114,7 +115,7 @@ export class Game {
     this.headQ = new THREE.Quaternion(); this.headPos = V();
     this.shoulder = [V(), V()]; this.target = [V(), V()]; this.handVis = [V(), V()]; this.anchor = [V(), V()]; this.prevT = [V(), V()];
     this.touching = [false, false]; this.hist = []; this.wasTouching = false;
-    this.prevLoc = [V(), V()]; this.anchorN = [V(0, 1, 0), V(0, 1, 0)]; this.lift = 0; this.altBlend = 0; this.ctrlHand = 1;
+    this.lastHand = [V(), V()]; this.lift = 0; this.altBlend = 0; this.ctrlHand = 1;
     this.ctrlDir = V(0, 0, -1); this.aliveT = 0; this.speed = 0;
     this.msgs = [];
     // rodada
@@ -178,7 +179,7 @@ export class Game {
     audio.play('badge', 0.8);
     this.save();
   }
-  teleport(p, yaw) { this.body.copy(p); this.vel.set(0, 0, 0); this.rigYaw = yaw; this.touching = [false, false]; this.hist = []; }
+  teleport(p, yaw) { this.body.copy(p); this.vel.set(0, 0, 0); this.rigYaw = yaw; this.touching = [false, false]; this.hist = []; this.handReset = true; }
   enterGame() {
     this.pstate = 'game'; this.aliveT = 0;
     this.teleport(this.world.spawnGame, 0);
@@ -291,85 +292,94 @@ export class Game {
     this.lift = lerp(this.lift, smooth(-0.25, 0.65, dM.y), 1 - Math.exp(-dt * 12));
     const shX = 0.2 * (1 - 0.7 * this.lift);
     const dirs = []; dirs[this.ctrlHand] = dM; dirs[1 - this.ctrlHand] = dO;
-    const fromBody = qYaw(this.bodyYaw);
-    const delta = V(); let cnt = 0, firstContact = false;
-    for (let i = 0; i < 2; i++) {
-      const sx = i === 1 ? 1 : -1;
+    // posição "rastreada" de cada mão, presa ao corpo (ombro + direção * comprimento do braço)
+    const handTarget = i => {
+      const sx = i === 1 ? 1 : -1, fromBody = qYaw(this.bodyYaw);
       const d = dirs[i].clone(); d.x -= sx * this.lift * 0.18; d.normalize();
       this.shoulder[i].copy(V(sx * shX, 0.14, 0).applyQuaternion(fromBody).add(this.body));
-      const tgt = d.applyQuaternion(fromBody).multiplyScalar(ARM_LEN).add(this.shoulder[i]);
-      const sd = tgt.clone().sub(this.shoulder[i]).normalize();
-      // movimento da mão no referencial do corpo (frente = +f, cima = +y) desde o quadro anterior
-      const loc = tgt.clone().sub(this.body).applyQuaternion(qYaw(-this.bodyYaw));
-      const mv = loc.clone().sub(this.prevLoc[i]);
-      this.prevLoc[i].copy(loc);
-      if (this.touching[i]) {
-        const h = this.world.raycast(this.shoulder[i], tgt.clone().addScaledVector(sd, 0.04));
-        // PEGADA DE MÃO ÚNICA: só gruda enquanto empurra (para trás/baixo).
-        // Levar a mão para a frente ou para cima solta (senão o corpo é puxado para trás/cima).
-        const onFloor = this.anchorN[i].y > 0.5;
-        const forward = -mv.z, up = mv.y;
-        if (!h.hit || up > 0.004 || (onFloor && forward > 0.003)) this.touching[i] = false;
-        else { delta.add(this.anchor[i].clone().sub(tgt)); cnt++; }
-      } else {
-        const h = this.world.raycast(this.shoulder[i], tgt);
-        // só agarra se a mão estiver indo para trás/baixo (não ao trazer o braço de volta)
-        if (h.hit && !(h.n.y > 0.5 && -mv.z > 0.006) && mv.y < 0.006) {
-          this.touching[i] = true;
-          this.anchor[i].copy(h.p).addScaledVector(h.n, 0.01);
-          this.anchorN[i].copy(h.n);
-          firstContact = true;
-          const spd = tgt.distanceTo(this.prevT[i]) / dt;
-          if (spd > 0.35) {
-            audio.play3D(['tap_ground', 'tap_wood', 'tap_stone', 'tap_metal', 'tap_leaf'][h.mat % 5], this.anchor[i], clamp(spd * 0.25, 0.2, 1), 3);
-            if (spd > 2) this.makeNoise(this.anchor[i], 1);
-          }
-          // correção da penetração inicial: pequena e fora do histórico de velocidade
-          const corr = this.anchor[i].clone().sub(tgt);
-          if (corr.length() > 0.05) corr.setLength(0.05);
-          delta.add(corr); cnt++;
+      return d.applyQuaternion(fromBody).multiplyScalar(ARM_LEN).add(this.shoulder[i]);
+    };
+
+    // ================= GORILLA LOCOMOTION =================
+    // 1) física do corpo (gravidade + velocidade), como o passo do rigidbody
+    const startPos = this.body.clone();
+    this.vel.y -= GRAV * dt;
+    this.body.addScaledVector(this.vel, dt);
+    const n0 = this.world.resolveSphere(this.body, BODY_R);
+    if (n0.lengthSq() > 0) {
+      n0.normalize();
+      const vn = this.vel.dot(n0);
+      if (vn < 0) this.vel.addScaledVector(n0, -vn);
+      if (n0.y > 0.6 && !this.touching[0] && !this.touching[1]) { const k = 1 - Math.min(1, dt * 1.2); this.vel.x *= k; this.vel.z *= k; }
+    }
+    // 2) primeira iteração: a mão que bate numa superfície fica presa; o corpo anda ao contrário dela
+    let skipHist = false;
+    if (this.handReset) { for (let i = 0; i < 2; i++) this.lastHand[i].copy(handTarget(i)).max(V(-1e9, HAND_R + 0.01, -1e9)); this.handReset = false; skipHist = true; this.hist = []; }
+    const first = [V(), V()], coll = [false, false];
+    for (let i = 0; i < 2; i++) {
+      const cur = handTarget(i);
+      const travel = cur.clone().sub(this.lastHand[i]).add(V(0, -2 * GRAV * dt * dt, 0));
+      const c = this.castHand(this.lastHand[i], travel);
+      if (c) {
+        first[i] = (this.touching[i] ? this.lastHand[i].clone() : c.pos).sub(cur);
+        this.vel.set(0, 0, 0);
+        coll[i] = true;
+        if (!this.touching[i]) {   // novo toque: som + barulho para os monstros
+          const spd = travel.length() / dt;
+          if (spd > 0.35) audio.play3D(['tap_ground', 'tap_wood', 'tap_stone', 'tap_metal', 'tap_leaf'][c.mat % 5], c.pos, clamp(spd * 0.25, 0.2, 1), 3);
+          if (spd > 2) this.makeNoise(c.pos, 1);
         }
       }
-      this.target[i].copy(tgt); this.prevT[i].copy(tgt);
     }
-    if (cnt > 0) {
-      delta.divideScalar(cnt);
-      if (delta.length() > 0.12) delta.setLength(0.12);   // no máx. ~8,6 m/s por quadro
-      const before = this.body.clone();
-      this.body.add(delta);
-      this.world.resolveSphere(this.body, BODY_R);
-      if (!firstContact) {
-        this.hist.push(this.body.clone().sub(before).divideScalar(dt));
-        if (this.hist.length > 6) this.hist.shift();
-      }
-      this.vel.set(0, 0, 0);
-    } else {
-      if (this.wasTouching && this.hist.length) {
-        const avg = V(); for (const h of this.hist) avg.add(h); avg.divideScalar(this.hist.length);
-        this.vel.copy(avg).multiplyScalar(BOOST_MUL[P.boost] * (1 + 0.35 * this.courage));
-        // pulo para cima mais contido (não sai voando para o teto)
-        this.vel.y = Math.min(this.vel.y * 0.7, 4.5);
-        const s = this.vel.length();
-        const vmax = BOOST_MAX[P.boost] + 2.5 * this.courage;
-        if (s > vmax) this.vel.setLength(vmax);
-        if (s > 3.5) audio.play3D('whoosh', this.body, clamp(s / 12, 0.1, 0.6), 2);
-        this.hist = [];
-      }
-      this.vel.y -= GRAV * dt;
-      this.body.addScaledVector(this.vel, dt);
-      const n = this.world.resolveSphere(this.body, BODY_R);
-      if (n.lengthSq() > 0) {
-        n.normalize();
-        const vn = this.vel.dot(n);
-        if (vn < 0) this.vel.addScaledVector(n, -vn);
-        if (n.y > 0.6) { const k = 1 - Math.min(1, dt * 1.5); this.vel.x *= k; this.vel.z *= k; }
+    const both = (coll[0] || this.touching[0]) && (coll[1] || this.touching[1]);
+    const move = both ? first[0].add(first[1]).multiplyScalar(0.5) : first[0].add(first[1]);
+    if (move.length() > 0.14) move.setLength(0.14);   // no máx. ~10 m/s por quadro (mão do Go não tem limite físico)
+    if (move.lengthSq() > 0) { this.body.add(move); this.world.resolveSphere(this.body, BODY_R); }
+    // 3) segunda iteração: atualiza onde cada mão está (presa na superfície ou livre)
+    for (let i = 0; i < 2; i++) {
+      const cur = handTarget(i);
+      const c = this.castHand(this.lastHand[i], cur.clone().sub(this.lastHand[i]));
+      if (c) { this.lastHand[i].copy(c.pos); coll[i] = true; } else this.lastHand[i].copy(cur);
+      this.target[i].copy(cur);
+      this.handVis[i].copy(this.lastHand[i]);
+    }
+    this.touching = coll;
+    // 4) histórico de velocidade e impulso enquanto a mão está apoiada
+    if (!skipHist) {
+      // com braço de tamanho fixo (Go), "ficar em pé nos braços" empurra o corpo para cima: isso não vira pulo
+      const hv = this.body.clone().sub(startPos).divideScalar(dt);
+      hv.y = Math.min(hv.y, 2.5);
+      if (hv.length() > 12) hv.setLength(12);
+      this.hist.push(hv);
+      if (this.hist.length > 6) this.hist.shift();
+    }
+    if (coll[0] || coll[1]) {
+      const avg = V(); for (const h of this.hist) avg.add(h); avg.divideScalar(this.hist.length);
+      const mult = JUMP_MUL[P.boost] * (1 + 0.25 * this.courage), vmax = JUMP_MAX[P.boost] + 2 * this.courage;
+      if (this.hist.length && avg.length() > VEL_LIMIT) {
+        this.vel.copy(avg.length() * mult > vmax ? avg.setLength(vmax) : avg.multiplyScalar(mult));
+        this.vel.y = Math.min(this.vel.y, 4);   // pulo vertical contido
+        if (this.vel.length() > 4 && this.now - (this.whooshT || 0) > 0.5) { this.whooshT = this.now; audio.play3D('whoosh', this.body, clamp(this.vel.length() / 12, 0.1, 0.5), 2); }
       }
     }
-    this.wasTouching = cnt > 0;
-    for (let i = 0; i < 2; i++) this.handVis[i].copy(this.touching[i] ? this.anchor[i] : this.target[i]);
-    this.speed = this.vel.length();
+    this.wasTouching = coll[0] || coll[1];
+    this.speed = this.hist.length ? this.hist[this.hist.length - 1].length() : 0;
     if (this.speed > 10) this.award(12);
     if (this.body.y < -5) this.teleport(this.pstate === 'game' ? this.world.spawnGame : this.world.spawnLobby, this.rigYaw);
+  }
+
+  // "sphere cast" da mão: do ponto 'from' andando 'move'; devolve onde a esfera da mão encosta
+  castHand(from, move) {
+    const L = move.length();
+    if (L < 1e-6) {  // parada: está encostada em algo?
+      const h = this.world.raycast(from.clone().add(V(0, 0.02, 0)), from.clone().add(V(0, -HAND_R - 0.01, 0)));
+      return h.hit && h.t < 0.02 + HAND_R + 0.005 ? { pos: from.clone(), mat: h.mat } : null;
+    }
+    const dir = move.clone().divideScalar(L);
+    const h = this.world.raycast(from, from.clone().addScaledVector(dir, L + HAND_R));
+    if (!h.hit) return null;
+    const pos = h.t <= 1e-4 ? from.clone() : h.p.clone().addScaledVector(dir, -HAND_R);
+    return { pos, mat: h.mat };
   }
 
   // ------------------------------------------------------------------ rodada (host)
@@ -452,7 +462,7 @@ export class Game {
 
   // ------------------------------------------------------------------ IA dos monstros
   moveMonster(m, goal, speed, dt) {
-    speed *= [0.8, 1, 1.25][this.cfg.diff ?? 1];
+    speed *= [0.8, 1, 1.2][this.cfg.diff ?? 1];
     m.pathT -= dt;
     if (!m.path.length || m.pathT <= 0) { m.path = this.world.findPath(m.pos, goal); m.pathT = 0.6; }
     let tgt = goal;
@@ -517,12 +527,12 @@ export class Game {
       if (m.state === 6) { m.timer -= dt; if (m.timer <= 0) m.state = 1; return; }
       if (watched) { m.state = 5; m.speed = 0; return; }
       if (nearest) {
-        m.state = 2; this.moveMonster(m, nearest.body, nd < 8 ? 7.5 : 5, dt);
+        m.state = 2; this.moveMonster(m, nearest.body, nd < 8 ? 4.6 : 3.4, dt);
         const d = nearest.body.clone().sub(m.pos); m.yaw = Math.atan2(-d.x, -d.z);
       } else {
         m.state = 1;
         if (!m.goal || hlen(m.goal.clone().sub(m.pos)) < 1.5) m.goal = this.world.patrol[Math.random() * this.world.patrol.length | 0];
-        this.moveMonster(m, m.goal, 2, dt);
+        this.moveMonster(m, m.goal, 1.8, dt);
       }
       return;
     }
@@ -551,21 +561,21 @@ export class Game {
           m.state = 4; m.leapT = 0; m.leapFrom.copy(m.pos); m.leapTo.copy(tp.body).add(V(0, -0.3, 0));
           audio.play3D('babuun_bark', eye, 1, 6); return;
         }
-        this.moveMonster(m, m.lastSeen, 6.3, dt);
+        this.moveMonster(m, m.lastSeen, 4.8, dt);
       } else {
-        m.timer -= dt; this.moveMonster(m, m.lastSeen, 7.2, dt);
-        if (m.timer <= 0) { m.state = 6; m.timer = 2.5; }
+        m.timer -= dt; this.moveMonster(m, m.lastSeen, 5.4, dt);
+        if (m.timer <= 0) { m.state = 6; m.timer = 3.5; }
       }
       return;
     }
     if (m.state === 3) {
-      this.moveMonster(m, m.lastSeen, m.type === 2 ? 5 : 3.6, dt);
+      this.moveMonster(m, m.lastSeen, m.type === 2 ? 4 : 3.2, dt);
       if (hlen(m.lastSeen.clone().sub(m.pos)) < 1.2) { m.state = 1; m.goal = null; }
       return;
     }
     m.state = 1;
     if (!m.goal || hlen(m.goal.clone().sub(m.pos)) < 1.5) m.goal = this.world.patrol[Math.random() * this.world.patrol.length | 0];
-    this.moveMonster(m, m.goal, m.type === 2 ? 1.8 : 2.4, dt);
+    this.moveMonster(m, m.goal, m.type === 2 ? 1.6 : 2.0, dt);
   }
 
   // ------------------------------------------------------------------ rede

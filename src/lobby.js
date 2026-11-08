@@ -255,7 +255,8 @@ export class Lobby {
       head(p);
       const lines = ['Você é um macaco SEM PERNAS: anda com as mãos!',
         '- Aponte o controle para baixo até a mão tocar o chão e EMPURRE para trás. A outra mão copia o movimento.',
-        '- Para CORRER: empurre rápido várias vezes e solte no meio do movimento. O impulso acelera e fica mais forte.',
+        '- Para CORRER: empurre o chão RÁPIDO e com força, várias vezes seguidas. Quanto mais rápido o empurrão, maior o impulso.',
+        '- A mão gruda onde encosta (gorilla locomotion real): para ir para frente, empurre para trás e levante o braço para voltar.',
         '- Suba em prateleiras e caixas empurrando as paredes.',
         '- Touchpad esq/dir: girar. Centro: grito de macaco.',
         '- Câmera: touchpad CIMA pega/vira selfie, BAIXO solta no ar (segure para guardar). Gatilho grava. Deslize para esticar.',
