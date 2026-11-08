@@ -54,7 +54,7 @@ export class Lobby {
 
     // ---- BADGES (toque para usar como título)
     g = board('badgeBoard', 2.6, 1.75, 'BADGES');
-    BADGES.forEach((b, i) => btn(g, i % 2 ? 0.1 : -1.05, 0.6 - (i / 2 | 0) * 0.2, '', () => {
+    BADGES.forEach((b, i) => btn(g, i % 2 ? 0.1 : -1.05, 0.62 - (i / 2 | 0) * 0.18, '', () => {
       if (!(P.badges & (1 << i))) { audio.play('ui_error', 0.5); return; }
       P.title = P.title === i ? -1 : i;
       game.hud(P.title >= 0 ? 'Título: ' + b[0] : 'Título removido', '#ffd84a', 2); save();
@@ -213,7 +213,7 @@ export class Lobby {
     p.draw(P.badges + '|' + P.title, () => {
       head(p);
       BADGES.forEach((b, i) => {
-        const got = P.badges & (1 << i), x = i % 2 ? 0.18 : -0.97, y = 0.6 - (i / 2 | 0) * 0.2;
+        const got = P.badges & (1 << i), x = i % 2 ? 0.18 : -0.97, y = 0.62 - (i / 2 | 0) * 0.18;
         p.text(x, y + 0.01, (got ? '' : '? ') + b[0], 0.055, got ? (P.title === i ? '#ff9933' : '#ffe680') : '#666', 'left');
         p.text(x, y - 0.06, b[1], 0.03, '#999', 'left');
       });
@@ -260,9 +260,10 @@ export class Lobby {
         '- Touchpad esq/dir: girar. Centro: grito de macaco.',
         '- Câmera: touchpad CIMA pega/vira selfie, BAIXO solta no ar (segure para guardar). Gatilho grava. Deslize para esticar.',
         '- Pegue as bananas douradas: a porta de aço abre. FUJA!',
-        '- O Pálido só anda quando ninguém olha para ele.'];
+        '- O Pálido só anda quando ninguém olha para ele (a lanterna também congela ele).',
+        '- CORAGEM: enche fora da zona segura e deixa o impulso e a lanterna mais fortes.'];
       let y = 0.62;
-      for (const l of lines) { p.text(-1.2, y, l, 0.042, '#fff', 'left'); y -= l.length > 60 ? 0.17 : 0.11; }
+      for (const l of lines) { p.text(-1.2, y, l, 0.042, '#fff', 'left'); y -= l.length > 60 ? 0.15 : 0.1; }
     });
     // manequins
     ['colorStation', 'wardrobe'].forEach((k, i) => {

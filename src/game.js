@@ -26,6 +26,7 @@ export const BADGES = [
   ['Macaco Social', 'Jogue com outro macaco online'], ['Estilista', 'Mude sua cor e um acessório'],
   ['Cinegrafista', 'Grave um vídeo com a câmera'], ['Alpinista', 'Suba no topo de uma prateleira'],
   ['Velocista', 'Alcance 10 m/s'], ['Veterano', 'Escape 5 vezes'],
+  ['Corajoso', 'Encha a barra de coragem'],
 ];
 export const HATS = ['', 'cos_cap', 'cos_beanie', 'cos_tophat', 'cos_crown', 'cos_leafcrown', 'cos_horns', 'cos_headphones'];
 export const FACES = ['', 'cos_glasses', 'cos_shades'];
@@ -151,12 +152,22 @@ export class Game {
     this.monModels = ['babuun', 'palido', 'mamae'].map(n => { const m = model(n); m.visible = false; s.add(m); return m; });
     this.me = new Avatar(s, this.prof, false);
     this.safeFx = buildSafeZones(s, this.world);
+    // lanterna presa na mão do controle
+    this.torch = new THREE.SpotLight(0xfff1cf, 0, 12, 0.5, 0.45, 1.2);
+    s.add(this.torch, this.torch.target);
+    this.torchModel = new THREE.Group();
+    const tb = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.028, 0.16, 12), new THREE.MeshLambertMaterial({ color: 0x2a2a2a }));
+    tb.rotation.x = Math.PI / 2; this.torchModel.add(tb);
+    const lens = new THREE.Mesh(new THREE.CircleGeometry(0.024, 16), new THREE.MeshBasicMaterial({ color: 0xfff6d8 }));
+    lens.position.z = -0.081; lens.rotation.y = Math.PI; this.torchModel.add(lens);
+    s.add(this.torchModel);
+    this.courage = 0; this.courageMaxed = false;
     // HUD preso à cabeça
     this.hudGroup = new THREE.Group();
     this.camera.add(this.hudGroup);
     // luz
     this.hemi = new THREE.HemisphereLight(0xcfd3dd, 0x2a2a2c, 1.0); s.add(this.hemi);
-    this.plights = [0, 1, 2].map(() => { const l = new THREE.PointLight(0xdfe6ff, 1.6, 9, 1.6); s.add(l); return l; });
+    this.plights = [0, 1, 2].map(() => { const l = new THREE.PointLight(0xdfe6ff, 6, 9, 1.6); s.add(l); return l; });
   }
 
   hud(t, color = '#fff', time = 3.5) { this.msgs.push({ t, color, time }); if (this.msgs.length > 4) this.msgs.shift(); }
@@ -208,11 +219,16 @@ export class Game {
     if (this.pstate === 'game') {
       const sz = this.world.inSafe(this.body);
       if (sz !== this.inSafeZone) {
-        if (sz) { this.hud(`ZONA SEGURA (${sz.name}): os monstros não entram aqui`, '#66ccff', 3.5); audio.play('badge', 0.25); }
+        if (sz) { this.hud(`ZONA SEGURA (${sz.name}): os monstros não entram aqui. Sua coragem diminui aqui dentro!`, '#66ccff', 3.5); audio.play('badge', 0.25); }
         else if (this.inSafeZone) this.hud('Você saiu da zona segura!', '#ff9966', 2);
         this.inSafeZone = sz;
       }
       this.aliveT += dt;
+      // CORAGEM: enche fora da zona segura (mais rápido com monstro por perto), esvazia dentro
+      if (this.inSafeZone) this.courage = Math.max(0, this.courage - dt / 25);
+      else this.courage = Math.min(1, this.courage + dt / 45 * (1 + 2.5 * this.chase));
+      if (this.courage >= 1 && !this.courageMaxed) { this.courageMaxed = true; this.hud('CORAGEM MÁXIMA! Impulso turbinado e lanterna forte!', '#ffb02e', 4); audio.play('badge', 0.7); this.award(14); }
+      if (this.courage < 0.8) this.courageMaxed = false;
       if (this.aliveT > 300) this.award(4);
       if (this.body.y > 3.3) this.award(11);
       this.roundBananas.forEach((bi, i) => {
@@ -330,11 +346,12 @@ export class Game {
     } else {
       if (this.wasTouching && this.hist.length) {
         const avg = V(); for (const h of this.hist) avg.add(h); avg.divideScalar(this.hist.length);
-        this.vel.copy(avg).multiplyScalar(BOOST_MUL[P.boost]);
+        this.vel.copy(avg).multiplyScalar(BOOST_MUL[P.boost] * (1 + 0.35 * this.courage));
         // pulo para cima mais contido (não sai voando para o teto)
         this.vel.y = Math.min(this.vel.y * 0.7, 4.5);
         const s = this.vel.length();
-        if (s > BOOST_MAX[P.boost]) this.vel.setLength(BOOST_MAX[P.boost]);
+        const vmax = BOOST_MAX[P.boost] + 2.5 * this.courage;
+        if (s > vmax) this.vel.setLength(vmax);
         if (s > 3.5) audio.play3D('whoosh', this.body, clamp(s / 12, 0.1, 0.6), 2);
         this.hist = [];
       }
@@ -428,7 +445,7 @@ export class Game {
     if (this.pstate !== 'game') return;
     this.pstate = 'caught'; this.jsT = 0; this.jsType = mi;
     audio.play(['js_babuun', 'js_palido', 'js_mamae'][mi], 1);
-    this.prof.catches++; this.award(5 + mi);
+    this.prof.catches++; this.award(5 + mi); this.courage = 0;
     this.hud('VOCÊ FOI PEGO ' + ['PELO BABUUN', 'PELO PÁLIDO', 'PELA MAMÃE'][mi] + '!', '#ff4040', 4);
     this.net.ev('DEAD');
   }
@@ -462,8 +479,8 @@ export class Game {
   }
   monsterAI(m, dt) {
     const ps = [];
-    if (this.pstate === 'game' && !this.world.inSafe(this.body)) ps.push({ id: this.myId, body: this.body, head: this.headPos, q: this.headQ });
-    for (const r of this.remotes.values()) if (r.state === 'F' && !this.world.inSafe(r.body)) ps.push({ id: r.id, body: r.body, head: r.body.clone().add(V(0, 0.3, 0)), q: r.headQ });
+    if (this.pstate === 'game' && !this.world.inSafe(this.body)) ps.push({ id: this.myId, body: this.body, head: this.headPos, q: this.headQ, hand: this.handVis[this.ctrlHand], dir: this.ctrlDir, range: 12 + 6 * this.courage });
+    for (const r of this.remotes.values()) if (r.state === 'F' && !this.world.inSafe(r.body)) ps.push({ id: r.id, body: r.body, head: r.body.clone().add(V(0, 0.3, 0)), q: r.headQ, hand: r.handC || r.body, dir: r.dir, range: 12 + 6 * (r.courage || 0) });
     const sight = m.type === 2 ? 13 : 22;
     const eye = m.pos.clone().add(V(0, m.type === 1 ? 2.1 : m.type === 2 ? 1.9 : 1.0, 0));
     const fwd = V(-Math.sin(m.yaw), 0, -Math.cos(m.yaw));
@@ -487,6 +504,15 @@ export class Game {
         const d = m.pos.clone().add(V(0, 1.4, 0)).sub(p.head), dl = d.length();
         if (dl > 35) continue;
         if (V(0, 0, -1).applyQuaternion(p.q).dot(d.divideScalar(dl)) > 0.78 && this.world.los(p.head, m.pos.clone().add(V(0, 1.4, 0)))) { watched = true; break; }
+        // a lanterna também congela o Pálido
+        if (p.dir) {
+          // cone da lanterna (~28°) contra pernas, tronco e cabeça do Pálido
+          for (const hy of [0.5, 1.3, 2.1]) {
+            const tgt = m.pos.clone().add(V(0, hy, 0)), ld = tgt.clone().sub(p.hand), ll = ld.length();
+            if (ll < p.range && p.dir.dot(ld.divideScalar(ll)) > 0.88 && this.world.los(p.hand, tgt)) { watched = true; break; }
+          }
+          if (watched) break;
+        }
       }
       if (m.state === 6) { m.timer -= dt; if (m.timer <= 0) m.state = 1; return; }
       if (watched) { m.state = 5; m.speed = 0; return; }
@@ -554,7 +580,8 @@ export class Game {
       const P = this.prof, b = this.body, q = this.headQ, h = this.handVis;
       const r2 = v => Math.round(v * 100) / 100;
       this.net.send({ t: 'st', s: [r2(b.x), r2(b.y), r2(b.z), q.x, q.y, q.z, q.w, r2(h[0].x), r2(h[0].y), r2(h[0].z), r2(h[1].x), r2(h[1].y), r2(h[1].z), r2(this.bodyYaw)],
-                      c: [P.r, P.g, P.b, P.hat, P.face, P.neck, P.acc, P.title], n: P.name, st: this.pstate === 'game' ? 'F' : this.pstate === 'caught' ? 'D' : 'L' });
+                      c: [P.r, P.g, P.b, P.hat, P.face, P.neck, P.acc, P.title], n: P.name,
+                      d: [+this.ctrlDir.x.toFixed(2), +this.ctrlDir.y.toFixed(2), +this.ctrlDir.z.toFixed(2), this.ctrlHand, +this.courage.toFixed(2)], st: this.pstate === 'game' ? 'F' : this.pstate === 'caught' ? 'D' : 'L' });
     }
     if (this.isHost()) {
       this.monT -= dt;
@@ -588,7 +615,7 @@ export class Game {
     }
     return r;
   }
-  dropRemote(id) { const r = this.remotes.get(id); if (r) { r.av.dispose(); r.tag.mesh.removeFromParent(); this.remotes.delete(id); } }
+  dropRemote(id) { const r = this.remotes.get(id); if (r) { r.av.dispose(); if (r.beam) r.beam.removeFromParent(); r.tag.mesh.removeFromParent(); this.remotes.delete(id); } }
   onNet(m) {
     switch (m.t) {
       case 'welcome': this.hud(`Conectado em '${m.cfg.name}'`, '#88ff99', 3); break;
@@ -603,6 +630,7 @@ export class Game {
         r.tBody.set(s[0], s[1], s[2]); r.tHeadQ.set(s[3], s[4], s[5], s[6]); r.tLh.set(s[7], s[8], s[9]); r.tRh.set(s[10], s[11], s[12]); r.tYaw = s[13];
         [r.prof.r, r.prof.g, r.prof.b, r.prof.hat, r.prof.face, r.prof.neck, r.prof.acc, r.prof.title] = m.c;
         r.name = m.n; r.state = m.st;
+        if (m.d) { r.dir = (r.dir || V()).set(m.d[0], m.d[1], m.d[2]); r.hand = m.d[3]; r.courage = m.d[4]; }
         if (r.fresh) { r.body.copy(r.tBody); r.lh.copy(r.tLh); r.rh.copy(r.tRh); r.headQ.copy(r.tHeadQ); r.yaw = r.tYaw; r.fresh = false; }
         break;
       }
@@ -671,15 +699,27 @@ export class Game {
     this.scene.fog.density = inLobby ? 0.02 : 0.055;
     this.scene.fog.color.setRGB(inLobby ? 0.2 : 0.05, inLobby ? 0.2 : 0.05, inLobby ? 0.22 : 0.06);
     this.scene.background = this.scene.fog.color;
-    this.hemi.intensity = inLobby ? 1.8 : 0.9;
+    this.hemi.intensity = inLobby ? 1.8 : 0.7;
     const ls = this.world.lights.map((l, i) => [l.distanceToSquared(this.body), i]).sort((a, b) => a[0] - b[0]);
     this.plights.forEach((pl, k) => {
       const i = ls[k][1];
       pl.position.copy(this.world.lights[i]).add(V(0, -0.3, 0));
       const flick = !inLobby && i % 7 === 3 && Math.sin(this.now * 13 + i) * Math.sin(this.now * 30 + i) > 0.3 ? 0.15 : 1;
-      pl.intensity = 1.6 * flick;
+      pl.intensity = (inLobby ? 5 : 6) * flick;
     });
     this.safeFx.update(this.now);
+    // lanterna (só no depósito)
+    const torchOn = this.pstate === 'game';
+    this.torchModel.visible = torchOn;
+    this.torch.intensity = torchOn ? 22 * (1 + 0.7 * this.courage) : 0;
+    this.torch.distance = 12 + 6 * this.courage;
+    if (torchOn) {
+      const tp = this.handVis[this.ctrlHand].clone().addScaledVector(this.ctrlDir, 0.1).add(V(0, 0.04, 0));
+      this.torch.position.copy(tp);
+      this.torch.target.position.copy(tp).addScaledVector(this.ctrlDir, 5);
+      this.torchModel.position.copy(tp);
+      this.torchModel.quaternion.setFromUnitVectors(V(0, 0, -1), this.ctrlDir);
+    }
     // portão
     this.gateModel.position.copy(this.world.gate).add(V(0, this.gateAnim * 3.9, 0));
     // bananas
@@ -719,6 +759,19 @@ export class Game {
       r.av.setVisible(r.state !== 'D');
       r.av.apply(r.prof);
       r.av.set(r.body, r.yaw, r.headQ, r.lh, r.rh);
+      // feixe de luz da lanterna dos outros jogadores (cone translúcido, sem custo de luz real)
+      if (!r.beam) {
+        r.beam = new THREE.Mesh(new THREE.ConeGeometry(1.4, 6, 20, 1, true).translate(0, -3, 0).rotateX(-Math.PI / 2),
+          new THREE.MeshBasicMaterial({ color: 0xfff0c0, transparent: true, opacity: 0.08, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+        this.scene.add(r.beam);
+      }
+      r.beam.visible = r.state === 'F' && !!r.dir;
+      if (r.beam.visible) {
+        r.handC = (r.hand === 0 ? r.lh : r.rh).clone();
+        r.beam.position.copy(r.handC);
+        r.beam.quaternion.setFromUnitVectors(V(0, 0, -1), r.dir.clone().normalize());
+        r.beam.material.opacity = 0.06 + 0.06 * (r.courage || 0);
+      }
       const tag = (r.prof.title >= 0 && BADGES[r.prof.title] ? `[${BADGES[r.prof.title][0]}] ` : '') + r.name;
       r.tag.draw(tag, (c, W, H, p) => p.text(0, 0, tag, 0.07, '#fff'));
       r.tag.mesh.position.copy(r.body).add(V(0, 0.75, 0));
@@ -744,9 +797,17 @@ export class Game {
     let n = 0; for (let i = 0; i < 32; i++) if (this.collected & (1 << i)) n++;
     const rec = this.cam.recording ? Math.floor(this.cam.recElapsed()) : -1;
     const top = this.pstate === 'game' && this.phase === 1 ? `Bananas ${n}/${this.roundBananas.length}${this.gateOpen ? '  - SAÍDA ABERTA!' : ''}` : '';
-    const key = this.msgs.map(m => m.t + (m.time < 1 ? (m.time * 4 | 0) : '')).join('|') + top + rec + (rec >= 0 ? (this.now * 2 | 0) % 2 : '');
+    const key = (this.pstate === 'game' ? Math.round(this.courage * 40) + ':' + !!this.inSafeZone + ':' : '') + this.msgs.map(m => m.t + (m.time < 1 ? (m.time * 4 | 0) : '')).join('|') + top + rec + (rec >= 0 ? (this.now * 2 | 0) % 2 : '');
     this.hudPanel.draw(key, (c, W, H, p) => {
       if (top) p.text(0, 0.21, top, 0.045, '#ffe066');
+      if (this.pstate === 'game') {
+        const [bx, by] = p.px(-0.3, -0.21), [ex] = p.px(0.3, 0), bw = ex - bx, bh = 14;
+        c.fillStyle = 'rgba(0,0,0,0.55)'; c.fillRect(bx - 2, by - bh / 2 - 2, bw + 4, bh + 4);
+        const cc = this.courage;
+        c.fillStyle = cc >= 1 ? '#ffb02e' : `rgb(${80 + 175 * cc | 0},${120 + 60 * cc | 0},60)`;
+        c.fillRect(bx, by - bh / 2, bw * cc, bh);
+        p.text(0, -0.165, this.inSafeZone ? 'CORAGEM (diminuindo na zona segura)' : 'CORAGEM', 0.03, cc >= 1 ? '#ffb02e' : '#ddd');
+      }
       if (rec >= 0) p.text(0.5, 0.21, `${(this.now * 2 | 0) % 2 ? '●' : ' '} REC ${String(rec / 60 | 0).padStart(2, '0')}:${String(rec % 60).padStart(2, '0')}`, 0.04, '#ff5050');
       this.msgs.forEach((m, i) => { c.globalAlpha = clamp(m.time, 0, 1); p.text(0, 0.12 - i * 0.08, m.t, 0.04, m.color, 'center', 1.35); c.globalAlpha = 1; });
     });
